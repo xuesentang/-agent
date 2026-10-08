@@ -1,12 +1,13 @@
 """Adapters for BGE-M3 dense vectors and a Milvus collection."""
 
 
+import os
 from threading import Lock
 
 
 class BGEM3Embedder:
     def __init__(self, model_name: str = "BAAI/bge-m3") -> None:
-        self.model_name = model_name
+        self.model_name = os.getenv("BGE_M3_MODEL_PATH", "").strip() or model_name
         self._model = None
         self._lock = Lock()
 

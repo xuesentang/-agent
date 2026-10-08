@@ -79,7 +79,7 @@ $env:PYTHONPATH='src'
 
 ## 第三章 RAG（开发分支）
 
-先在 Zilliz Cloud 建立 **Free** 集群，复制 Endpoint 和 API Key 到本机 `.env` 的 `MILVUS_URI`、`MILVUS_TOKEN`。不要把密钥提交到 GitHub。向量和整数 ID 存云端；政策原文只在本机 MySQL。运行建库与聊天时需联网。首次运行 BGE-M3 会下载模型权重，并在本机 CPU 推理。
+先在 Zilliz Cloud 建立 **Free** 集群，复制 Endpoint 和 API Key 到本机 `.env` 的 `MILVUS_URI`、`MILVUS_TOKEN`。不要把密钥提交到 GitHub。向量和整数 ID 存云端；政策原文只在本机 MySQL。运行建库与聊天时需联网。首次运行 BGE-M3 会下载模型权重，并在本机 CPU 推理。若 Hugging Face 下载中断，可从 ModelScope 下载同一 `BAAI/bge-m3` 模型，并将本地模型目录写入 `.env` 的 `BGE_M3_MODEL_PATH`。
 
 ```powershell
 .venv\Scripts\python.exe -m pip install -e '.[rag,test]'
@@ -101,4 +101,4 @@ $env:PYTHONPATH='src'
 .venv\Scripts\python.exe -m customer_service.knowledge_cli index
 ```
 
-如需定时，使用 Windows 任务计划程序定期调用上述三条命令。项目不自动创建系统计划任务。真实验收仍需 Free 集群连接信息；未配置时可运行 `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider` 做离线检查。
+如需定时，使用 Windows 任务计划程序定期调用上述三条命令。项目不自动创建系统计划任务。已在本机验证 Zilliz 连接、BGE-M3 建库中断恢复、语义召回、浏览器聊天回复和真实模型问答抽取；在其他电脑运行仍需各自配置连接与模型目录。离线检查使用 `.venv\Scripts\python.exe -m pytest -q -p no:cacheprovider`。
