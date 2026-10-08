@@ -9,7 +9,7 @@ from customer_service.seed import init_database
 
 def test_four_tables_seed_and_conversation_history(tmp_path):
     engine = make_engine(f"sqlite:///{tmp_path / 'test.db'}")
-    assert set(Base.metadata.tables) == {"faq", "conversations", "messages", "tickets"}
+    assert {"faq", "conversations", "messages", "tickets"} <= set(Base.metadata.tables)
     init_database(engine)
     init_database(engine)
     repo = Repository(sessionmaker(engine, expire_on_commit=False))

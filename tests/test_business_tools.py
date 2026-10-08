@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from customer_service.business_tools import build_business_tools
 from customer_service.db import make_engine
 from customer_service.repository import Repository
+from customer_service.repository import FAQRow
 from customer_service.seed import init_database
 
 
@@ -14,7 +15,11 @@ def test_five_tools_query_and_ticket(tmp_path):
     init_database(engine)
     repo = Repository(sessionmaker(engine, expire_on_commit=False))
     cid = repo.create_conversation()
-    tools = {tool.name: tool for tool in build_business_tools(repo, cid, Random(7))}
+    class FakeSearch:
+        def search(self, question):
+            return [FAQRow("退货政策", "按店铺政策", "售后")] if question == "退货政策" else []
+
+    tools = {tool.name: tool for tool in build_business_tools(repo, cid, Random(7), FakeSearch())}
     assert set(tools) == {"query_order", "query_product", "query_logistics", "query_faq", "create_ticket"}
     for name, args, key, value in [
         ("query_order", {"order_id": "1001"}, "order_id", "1001"),

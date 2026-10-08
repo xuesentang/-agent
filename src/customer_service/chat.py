@@ -20,10 +20,11 @@ class ChatEvent:
 
 
 class ChatService:
-    def __init__(self, model, repository: Repository, token_budget: int) -> None:
+    def __init__(self, model, repository: Repository, token_budget: int, knowledge_search=None) -> None:
         self.model = model
         self.repository = repository
         self.token_budget = token_budget
+        self.knowledge_search = knowledge_search
         self._locks: dict[str, asyncio.Lock] = {}
 
     def prepare(self, conversation_id: str, message: str):
@@ -51,7 +52,7 @@ class ChatService:
     async def _stream_locked(self, conversation_id: str, message: str) -> AsyncIterator[ChatEvent]:
         messages = await asyncio.to_thread(self.prepare, conversation_id, message)
         await asyncio.to_thread(self.repository.append_messages, conversation_id, [MessageRow("user", message)])
-        tools = build_business_tools(self.repository, conversation_id, Random())
+        tools = build_business_tools(self.repository, conversation_id, Random(), self.knowledge_search)
         decision = await self.model.bind_tools(tools, tool_choice="auto", parallel_tool_calls=False).ainvoke(messages)
         calls = decision.tool_calls
         if len(calls) > 1:
@@ -59,7 +60,7 @@ class ChatService:
         if calls:
             call = calls[0]
             yield ChatEvent("tool_status", {"tool_name": call["name"], "state": "running"})
-            result = await ToolExecutor(tools).execute(call)
+            result = await ToolExecutor(tools, faq_timeout_seconds=30 if self.knowledge_search is not None else None).execute(call)
             original_result = result
             final_messages = [*messages, decision, result]
             max_input = self.token_budget - 512 - count_tokens_approximately([SystemMessage(content=FINAL_RESPONSE_RULE)])

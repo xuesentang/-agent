@@ -16,7 +16,7 @@ class ProductInput(BaseModel):
 
 
 class FAQInput(BaseModel):
-    keyword: str = Field(description="用户问题的核心名词短语，例如退货政策；不要包含‘是什么’。仅按字面关键词查询。")
+    keyword: str = Field(description="用户关于政策、配送或售后的完整问题；支持语义检索。")
 
 
 class TicketInput(BaseModel):
@@ -24,7 +24,7 @@ class TicketInput(BaseModel):
     ticket_type: str = Field(description="工单类型，例如 complaint、refund、logistics 或 other")
 
 
-def build_business_tools(repository: Repository, conversation_id: str, rng: Random) -> list[BaseTool]:
+def build_business_tools(repository: Repository, conversation_id: str, rng: Random, knowledge_search=None) -> list[BaseTool]:
     @tool(args_schema=OrderInput)
     def query_order(order_id: str) -> str:
         """查询订单演示状态。用户询问订单当前状态时使用；返回的是模拟数据。"""
@@ -42,8 +42,10 @@ def build_business_tools(repository: Repository, conversation_id: str, rng: Rand
 
     @tool(args_schema=FAQInput)
     def query_faq(keyword: str) -> str:
-        """从 FAQ 表按问题文字关键词查询政策。仅字面匹配，无同义词或语义检索。"""
-        rows = repository.search_faq(keyword)
+        """按用户问题语义检索知识库中的政策、配送及售后说明。"""
+        if knowledge_search is None:
+            raise RuntimeError("Knowledge search is not configured")
+        rows = knowledge_search.search(keyword)
         return json.dumps({"found": bool(rows), "matches": [vars(row) for row in rows]}, ensure_ascii=False)
 
     @tool(args_schema=TicketInput)
