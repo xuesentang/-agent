@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>青禾客服 · 在线对话</title>
+  <style>
+    :root { font-family: "Inter", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; color: #18243a; background: #f3f6fb; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, textarea, input { font: inherit; }
+    button { cursor: pointer; transition: background .2s ease, border-color .2s ease, transform .2s ease, box-shadow .2s ease; }
+    button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid #9ec6ff; outline-offset: 2px; }
+    button:disabled { cursor: not-allowed; opacity: .56; }
+    main { width: min(1080px, 100%); height: 100dvh; min-height: 680px; margin: auto; padding: 24px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 18px; }
+    header, section { min-width: 0; background: #fff; border: 1px solid #e3e9f2; border-radius: 20px; box-shadow: 0 10px 32px #1f3b6509; }
+    header { padding: 19px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .brand { display: flex; align-items: center; gap: 15px; min-width: 0; }
+    .brand-mark { display: grid; place-items: center; flex: none; width: 46px; height: 46px; border-radius: 14px; color: #fff; background: linear-gradient(145deg, #2769d7, #184ba8); box-shadow: 0 7px 18px #2461c533; }
+    .brand-mark svg { width: 25px; height: 25px; }
+    .eyebrow { margin: 0 0 5px; color: #5c7baa; font-size: 10px; font-weight: 750; letter-spacing: .16em; }
+    h1 { margin: 0; font-size: 21px; line-height: 1.2; letter-spacing: -.035em; }
+    p { margin: 0; color: #728096; font-size: 13px; line-height: 1.6; }
+    .header-actions { display: flex; align-items: center; gap: 14px; flex: none; }
+    .model-badge { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid #e3eaf3; border-radius: 999px; color: #4b617f; background: #f8fafd; font-size: 12px; font-weight: 650; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #24b47e; box-shadow: 0 0 0 4px #d9f6e9; }
+    button.secondary { min-height: 40px; padding: 9px 14px; border: 1px solid #dbe5f1; border-radius: 10px; color: #385371; background: #fff; font-size: 13px; font-weight: 650; }
+    button.secondary:hover { background: #f5f9ff; border-color: #bdd1ec; }
+    .chat { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+    .chat-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 19px 24px; border-bottom: 1px solid #edf1f6; }
+    .chat-topbar h2 { margin: 0; font-size: 15px; letter-spacing: -.015em; }
+    .chat-topbar p { margin-top: 4px; }
+    .live-label { padding: 6px 10px; border: 1px solid #d6e8fa; border-radius: 999px; background: #f1f8ff; color: #2871b3; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    #messages { padding: 26px 28px; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; background: radial-gradient(circle at 50% 0, #f7faff 0, #fff 48%); }
+    #messages::-webkit-scrollbar { width: 8px; }
+    #messages::-webkit-scrollbar-thumb { background: #d8e2ee; border: 2px solid #fff; border-radius: 8px; }
+    .empty { max-width: 410px; margin: auto; text-align: center; }
+    .empty-icon { display: grid; place-items: center; width: 62px; height: 62px; margin: 0 auto 17px; border: 1px solid #d9e8ff; border-radius: 20px; color: #2d71d4; background: #eff6ff; }
+    .empty-icon svg { width: 29px; height: 29px; }
+    .empty h3 { margin: 0 0 9px; font-size: 19px; letter-spacing: -.03em; }
+    .empty p { font-size: 14px; }
+    .suggestions { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+    .suggestion { min-height: 38px; padding: 8px 12px; border: 1px solid #dfe8f4; border-radius: 999px; background: #fff; color: #4b607b; font-size: 12px; }
+    .suggestion:hover { background: #eef5ff; border-color: #bad4fa; }
+    .message-row { display: flex; align-items: flex-start; gap: 10px; max-width: 90%; }
+    .message-row.user { align-self: flex-end; flex-direction: row-reverse; }
+    .message-row.assistant { align-self: flex-start; }
+    .avatar { display: grid; place-items: center; flex: none; width: 31px; height: 31px; border-radius: 10px; font-size: 11px; font-weight: 800; }
+    .assistant .avatar { color: #2663bf; background: #e9f2ff; }
+    .user .avatar { color: #fff; background: #627899; }
+    .message-body { min-width: 0; }
+    .sender { margin: 0 0 6px 2px; color: #8593a5; font-size: 11px; font-weight: 650; }
+    .user .sender { text-align: right; margin-right: 2px; }
+    .bubble { padding: 12px 15px; border-radius: 14px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+    .user .bubble { background: #2464ce; color: #fff; border-top-right-radius: 4px; box-shadow: 0 5px 14px #2464ce20; }
+    .assistant .bubble { background: #f0f4f9; color: #263750; border-top-left-radius: 4px; }
+    .tool-badge { display: inline-flex; align-items: center; margin: 0 0 6px 2px; padding: 3px 8px; border: 1px solid #a9c9b5; border-radius: 999px; background: #e8f4e7; color: #255b48; font-size: 10px; font-weight: 700; white-space: nowrap; }
+    .tool-badge.error { border-color: #e5b3a6; background: #fff0e9; color: #9c4538; }
+    .composer { padding: 17px 20px 14px; border-top: 1px solid #edf1f6; background: #fff; }
+    .composer-box { display: flex; align-items: flex-end; gap: 12px; padding: 8px; border: 1px solid #dbe4ef; border-radius: 14px; background: #fbfcff; transition: border-color .2s, box-shadow .2s; }
+    .composer-box:focus-within { border-color: #8ab4f2; box-shadow: 0 0 0 3px #dfeeff; }
+    textarea { flex: 1; min-width: 0; min-height: 46px; max-height: 150px; padding: 10px 8px; border: 0; resize: vertical; outline: none; background: transparent; color: #22334a; font-size: 14px; line-height: 1.6; }
+    textarea:focus-visible { outline: none; }
+    textarea::placeholder, input::placeholder { color: #9ba9ba; }
+    .send-button { display: grid; place-items: center; flex: none; width: 43px; height: 43px; padding: 0; border: 0; border-radius: 11px; color: #fff; background: #2464ce; }
+    .send-button svg { width: 19px; height: 19px; }
+    .send-button:hover { background: #164fad; transform: translateY(-1px); }
+    .composer-note { margin: 8px 4px 0; color: #98a5b5; font-size: 11px; }
+    @media (max-width: 900px) { main { height: 100dvh; min-height: 560px; } }
+    @media (max-width: 620px) { main { padding: 10px; gap: 10px; min-height: 480px; } header { padding: 14px; } .brand-mark { width: 40px; height: 40px; } h1 { font-size: 17px; } .model-badge { display: none; } .chat-topbar { padding: 16px; } #messages { padding: 20px 14px; } .message-row { max-width: 98%; } .composer { padding: 12px; } .empty h3 { font-size: 17px; } }
+    @media (prefers-reduced-motion: reduce) { button, .composer-box { transition: none; } .send-button:hover { transform: none; } }
+    /* 青禾主题：参考单屏会话结构，改用青绿与深墨色。 */
+    :root { color: #183431; background: #e7eee8; }
+    body { background: radial-gradient(circle at 18% 12%, #f5f6e7, transparent 35%), #e7eee8; }
+    main { width: min(1120px, 100%); padding: 18px; gap: 0; }
+    header, section { border: 1px solid #183b37; box-shadow: none; }
+    header { min-height: 108px; padding: 20px 26px; border-radius: 20px 20px 0 0; border-bottom: 0; background: #d2e5d8; }
+    .brand-mark { width: 56px; height: 56px; border: 2px solid #173b36; border-radius: 14px; background: #f6f8ec; color: #1e6f60; box-shadow: 4px 4px 0 #173b36; }
+    .brand-mark svg { width: 34px; height: 34px; }
+    .eyebrow { color: #568175; letter-spacing: .14em; }
+    h1 { color: #193b36; font-size: 23px; }
+    .brand p { color: #517268; font-size: 12px; }
+    .status-dot { display: inline-block; margin-right: 8px; vertical-align: 1px; background: #23a16d; box-shadow: 0 0 0 3px #b5ddc4; }
+    button.secondary { min-height: 42px; padding: 9px 17px; border: 1.5px solid #1f5148; border-radius: 9px; background: #f8f9ee; color: #174b40; box-shadow: 3px 3px 0 #1f5148; }
+    button.secondary:hover { background: #e6f2e6; border-color: #1f5148; }
+    .chat { grid-template-rows: minmax(0, 1fr) auto; border-radius: 0 0 20px 20px; background: #f8f9f2; }
+    #messages { padding: 34px 44px; gap: 29px; background: #f8f9f2; }
+    .empty-icon { width: 68px; height: 68px; border: 2px solid #29574d; border-radius: 20px; background: #d9eee0; color: #1a6957; font-size: 28px; font-weight: 800; box-shadow: 4px 4px 0 #29574d; }
+    .empty h3 { color: #1b3d37; }
+    .empty p { color: #647b72; }
+    .suggestion { border-color: #b9d4c6; background: #fffdf5; color: #315b50; }
+    .suggestion:hover { border-color: #5b9c82; background: #eaf4e9; }
+    .message-row { max-width: 84%; }
+    .avatar { border: 1px solid #356458; border-radius: 8px; }
+    .assistant .avatar { color: #1e6656; background: #deefe2; }
+    .user .avatar { color: #fff; background: #29584f; }
+    .sender { color: #678078; }
+    .bubble { padding: 15px 18px; border-radius: 14px; font-size: 15px; line-height: 1.8; }
+    .user .bubble { background: #266e62; color: #fff; border-top-right-radius: 4px; box-shadow: none; }
+    .assistant .bubble { border: 1px solid #d7e2d8; background: #fffefa; color: #263d37; border-top-left-radius: 4px; }
+    .composer { padding: 17px 26px 15px; border-top: 1px solid #c5d7c8; background: #f8f9f2; }
+    .composer-box { padding: 7px; border: 1.5px solid #739787; border-radius: 13px; background: #fffefa; }
+    .composer-box:focus-within { border-color: #2c7966; box-shadow: 0 0 0 3px #d5e9d9; }
+    textarea { font-size: 15px; }
+    textarea::placeholder { color: #9aac9f; }
+    .send-button { border-radius: 9px; background: #246f60; }
+    .send-button:hover { background: #165749; }
+    .composer-note { color: #789086; text-align: center; }
+    @media (max-width: 620px) { main { padding: 8px; } header { min-height: 88px; padding: 12px; } .brand-mark { width: 44px; height: 44px; box-shadow: 2px 2px 0 #173b36; } .brand-mark svg { width: 27px; height: 27px; } h1 { font-size: 18px; } #messages { padding: 22px 14px; } .message-row { max-width: 96%; } .bubble { padding: 12px 14px; font-size: 14px; } .composer { padding: 12px; } .composer-note { font-size: 10px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><path d="M8 23c0-7 5-12 12-12s12 5 12 12c0 6-5 11-12 11h-8l-4 3v-14Z" stroke="currentColor" stroke-width="2.4"/><path d="M14 23c3-5 8-7 13-6-1 6-5 10-11 10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><div class="eyebrow">QINGHE SUPPORT</div><h1>青禾 · 在线客服</h1><p><span class="status-dot"></span>在线服务 · 随时为你解答</p></div>
+    </div>
+    <div class="header-actions"><button id="new-chat" class="secondary" type="button">＋ 新对话</button></div>
+  </header>
+  <section class="chat" aria-label="对话">
+    <div id="messages" aria-live="polite">
+      <div class="empty">
+        <div class="empty-icon" aria-hidden="true">青</div>
+        <h3>你好，今天有什么需要帮忙？</h3><p>订单、物流或售后问题，都可以在这里告诉我。</p>
+        <div class="suggestions"><button class="suggestion" type="button" data-prompt="我的订单物流一直没有更新，怎么办？">物流问题</button><button class="suggestion" type="button" data-prompt="收到的商品有问题，我想了解售后处理方式。">售后咨询</button></div>
+      </div>
+    </div>
+    <form id="chat-form" class="composer">
+      <div class="composer-box"><textarea id="message" aria-label="输入对话消息" placeholder="输入消息，和青禾聊聊……" required></textarea><button id="send" class="send-button" type="submit" aria-label="发送消息"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 14-7-5 14-2-6-7-1Z"/><path d="m12 13 7-8"/></svg></button></div>
+      <p class="composer-note">Enter 发送 · Shift + Enter 换行　｜　青禾可协助梳理问题，具体订单处理以商家为准</p>
+    </form>
+  </section>
+</main>
+<script>
+  const messages = document.getElementById('messages');
+  const chatForm = document.getElementById('chat-form');
+  const messageInput = document.getElementById('message');
+  const sendButton = document.getElementById('send');
+  let conversationId = null;
+  let busy = false;
+
+  function addBubble(role, text) {
+    messages.querySelector('.empty')?.remove();
+    const row = document.createElement('div');
+    row.className = `message-row ${role}`;
+    const avatar = document.createElement('div');
+    avatar.className = 'avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = role === 'user' ? '我' : '青';
+    const body = document.createElement('div');
+    body.className = 'message-body';
+    const sender = document.createElement('div');
+    sender.className = 'sender';
+    sender.textContent = role === 'user' ? '我' : '青禾客服';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+    body.append(sender, bubble);
+    row.append(avatar, body);
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+    return bubble;
+  }
+
+  function handleEvent(block, bubble) {
+    const lines = block.split('\n');
+    const event = lines.find(line => line.startsWith('event: '))?.slice(7);
+    const dataLine = lines.find(line => line.startsWith('data: '));
+    if (!event || !dataLine) return;
+    const data = JSON.parse(dataLine.slice(6));
+    if (event === 'session') conversationId = data.conversation_id;
+    if (event === 'tool_status') {
+      const body = bubble.parentElement;
+      let badge = body.querySelector('.tool-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'tool-badge';
+        body.insertBefore(badge, bubble);
+      }
+      badge.textContent = `${data.tool_name} · ${data.state === 'running' ? '查询中' : data.state === 'success' ? '已查询' : '查询失败'}`;
+      badge.classList.toggle('error', data.state === 'error');
+    }
+    if (event === 'token') {
+      bubble.textContent += data.text;
+      messages.scrollTop = messages.scrollHeight;
+    }
+    if (event === 'error') bubble.textContent += `\n[请求失败] ${data.message}`;
+  }
+
+  chatForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy) return;
+    const message = messageInput.value.trim();
+    if (!message) return;
+    busy = true;
+    sendButton.disabled = true;
+    addBubble('user', message);
+    messageInput.value = '';
+    const answer = addBubble('assistant', '');
+    try {
+      const response = await fetch('/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, conversation_id: conversationId })
+      });
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let pending = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        pending += decoder.decode(value || new Uint8Array(), { stream: !done }).replaceAll('\r\n', '\n');
+        let boundary;
+        while ((boundary = pending.indexOf('\n\n')) !== -1) {
+          handleEvent(pending.slice(0, boundary), answer);
+          pending = pending.slice(boundary + 2);
+        }
+        if (done) break;
+      }
+      if (!answer.textContent) answer.textContent = '[模型未返回文本]';
+    } catch (error) {
+      answer.textContent += `\n[请求失败] ${error.message}`;
+    } finally {
+      busy = false;
+      sendButton.disabled = false;
+      messageInput.focus();
+    }
+  });
+
+  messageInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      chatForm.requestSubmit();
+    }
+  });
+
+  document.querySelectorAll('.suggestion').forEach(button => {
+    button.addEventListener('click', () => {
+      messageInput.value = button.dataset.prompt;
+      messageInput.focus();
+    });
+  });
+
+  document.getElementById('new-chat').addEventListener('click', () => {
+    if (busy) return;
+    conversationId = null;
+    messages.innerHTML = '<div class="empty"><div class="empty-icon" aria-hidden="true">青</div><h3>新的对话，新的开始</h3><p>发送消息，青禾会在这里回复你。</p></div>';
+    messageInput.focus();
+  });
+
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+{"message":"订单 1001 的物流到哪了","expected_tool":"query_logistics","expected_order_id":"1001"}
+{"message":"退货政策是什么","expected_tool":"query_faq","expected_keyword":"退货政策","expected_found":true}
+{"message":"邮费是多少","expected_tool":"query_faq","expected_keyword":"邮费","expected_found":false}

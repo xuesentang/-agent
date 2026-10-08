@@ -1,0 +1,6 @@
+{"description":"订单 A123 的耳机坏了，请退款","expected":{"order_id":"A123","request_type":"refund","expected_resolution":"退款"}}
+{"description":"刚收到的衣服尺码不合适，能换大一码吗？","expected":{"order_id":null,"request_type":"exchange","expected_resolution":"换大一码"}}
+{"description":"订单 B456 一直没到，帮我催一下物流","expected":{"order_id":"B456","request_type":"logistics","expected_resolution":"催促物流"}}
+{"description":"订单 C789 的电饭煲无法加热，希望维修","expected":{"order_id":"C789","request_type":"repair","expected_resolution":"维修"}}
+{"description":"订单 D123 的包裹破损了","expected":{"order_id":"D123","request_type":"logistics","expected_resolution":null}}
+{"description":"买的鞋不想要了，想退货","expected":{"order_id":null,"request_type":"return","expected_resolution":"退货"}}
