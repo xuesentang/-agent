@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from customer_service.db import make_engine
-from customer_service.models import Base, FAQ
+from customer_service.models import Conversation, FAQ, Message, Ticket
 
 
 FAQ_SEEDS = [
@@ -14,7 +14,8 @@ FAQ_SEEDS = [
 def init_database(engine: Engine) -> None:
     if engine.dialect.name == "mysql" and engine.url.database != "customer_service":
         raise ValueError("MySQL initialization is restricted to customer_service")
-    Base.metadata.create_all(engine)
+    from customer_service.models import Base
+    Base.metadata.create_all(engine, tables=[FAQ.__table__, Conversation.__table__, Message.__table__, Ticket.__table__])
     from sqlalchemy.orm import Session
 
     with Session(engine) as session, session.begin():

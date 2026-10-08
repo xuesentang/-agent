@@ -80,9 +80,21 @@ def _build_app() -> FastAPI:
     from sqlalchemy.orm import sessionmaker
     from customer_service.db import make_engine
     from customer_service.repository import Repository
+    from customer_service.knowledge_search import KnowledgeSearch
+    from customer_service.knowledge_store import KnowledgeStore
+    from customer_service.vector_store import BGEM3Embedder, MilvusVectors
 
-    repository = Repository(sessionmaker(make_engine(settings.database_url), expire_on_commit=False))
+    import os
+
+    factory = sessionmaker(make_engine(settings.database_url), expire_on_commit=False)
+    repository = Repository(factory)
+    uri = os.getenv("MILVUS_URI", "").strip()
+    token = os.getenv("MILVUS_TOKEN", "").strip()
+    knowledge_search = KnowledgeSearch(KnowledgeStore(factory), BGEM3Embedder(), MilvusVectors(uri, token)) if uri and token else None
+    if knowledge_search is not None:
+        # Model initialization/download happens before the app accepts requests.
+        knowledge_search.embedder.encode(["知识库预热"])
     return create_app(
-        ChatService(model, repository, settings.history_token_budget),
+        ChatService(model, repository, settings.history_token_budget, knowledge_search),
         ExtractionService(model, settings.structured_output_method),
     )

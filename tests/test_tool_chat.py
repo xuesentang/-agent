@@ -13,7 +13,7 @@ from customer_service.main import create_app
 from customer_service.repository import Repository
 from customer_service.models import FAQ
 from customer_service.prompts import CHAT_PROMPT, FINAL_RESPONSE_RULE
-from customer_service.repository import MessageRow
+from customer_service.repository import FAQRow, MessageRow
 from customer_service.seed import init_database
 
 
@@ -90,7 +90,11 @@ def test_large_tool_result_stays_within_model_budget(tmp_path):
             faq.answer = "退货详情" * 5000
         repo = Repository(sessionmaker(engine, expire_on_commit=False))
         model = FakeModel([{"name": "query_faq", "args": {"keyword": "退货政策"}, "id": "call_1"}])
-        app = create_app(ChatService(model, repo, 900), None)
+        class LargeSearch:
+            def search(self, question):
+                return [FAQRow("退货政策", "退货详情" * 5000, "售后")]
+
+        app = create_app(ChatService(model, repo, 900, LargeSearch()), None)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post("/chat/stream", json={"message": "退货政策是什么"})
         assert response.status_code == 200
