@@ -26,5 +26,6 @@ def test_extract_model_temperature_zero(monkeypatch):
 
 
 def test_no_hardcoded_key():
-    for path in Path("app").rglob("*.py"):
+    app_root = Path(__file__).resolve().parents[1] / "app"
+    for path in app_root.rglob("*.py"):
         assert "sk-" not in path.read_text(encoding="utf-8"), path

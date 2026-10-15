@@ -17,6 +17,13 @@ class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
 
+    @field_validator("session_id")
+    @classmethod
+    def session_id_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("session_id must not be blank")
+        return value
+
     @field_validator("message")
     @classmethod
     def message_not_blank(cls, value: str) -> str:

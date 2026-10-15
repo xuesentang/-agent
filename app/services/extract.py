@@ -3,6 +3,7 @@
 from langchain_openai import ChatOpenAI
 from pydantic import ValidationError
 
+from app.config import get_settings
 from app.core.llm import get_extract_model
 from app.core.prompts import build_extract_prompt
 from app.core.schemas import AfterSalesInfo
@@ -18,7 +19,11 @@ async def extract_after_sales(text: str, model: ChatOpenAI | None = None) -> dic
         # D2 回退链实录：GLM-5.3-Flash 经 function_calling 不产生 tool_calls
         # （直接在 content 输出正确 JSON），故按 spec 既定回退切换 json_mode，
         # 依赖 prompt 中的 JSON 指引 + Pydantic 校验。
-        structured = base_model.with_structured_output(AfterSalesInfo, method="json_mode")
+        # method 可配置（review Important #4）：换支持 function_calling 的
+        # 供应商时只改 .env 的 LLM_STRUCTURED_METHOD，不改代码。
+        structured = base_model.with_structured_output(
+            AfterSalesInfo, method=get_settings().llm_structured_method
+        )
     except Exception as exc:
         raise ExtractionError(f"structured output setup failed: {exc}") from exc
 

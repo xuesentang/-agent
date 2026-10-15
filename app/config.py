@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     llm_model: str = "glm-5.3-flash"
     llm_temperature: float = 0.7
     llm_max_tokens: int = 512
+    llm_timeout: int = 60
+    llm_max_retries: int = 1
+    # with_structured_output method: "json_mode" (GLM) or "function_calling".
+    llm_structured_method: str = "json_mode"
     history_token_budget: int = 2048
 
 

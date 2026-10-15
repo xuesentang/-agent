@@ -49,6 +49,42 @@ async def test_upstream_error_emits_sse_error_event():
     assert store.get_history("s1") == []
 
 
+async def test_concurrent_same_session_serialized():
+    """Review Important #2: same-session concurrency must not interleave history."""
+    import asyncio
+
+    fast_model_seen = {}
+
+    class SlowModel:
+        async def astream(self, messages):
+            await asyncio.sleep(0.05)
+            yield AIMessageChunk(content="first-reply")
+
+    class FastModel:
+        async def astream(self, messages):
+            fast_model_seen["messages"] = list(messages)
+            yield AIMessageChunk(content="second-reply")
+
+    store = SessionStore()
+
+    async def drain(gen):
+        return [e async for e in gen]
+
+    await asyncio.gather(
+        drain(stream_chat_reply("s-cc", "msg-one", store=store, model=SlowModel())),
+        drain(stream_chat_reply("s-cc", "msg-two", store=store, model=FastModel())),
+    )
+
+    # Second request's prompt must already contain round one (serialized,
+    # not raced): its human messages are [msg-one (history), msg-two (input)].
+    second_human = [m.content for m in fast_model_seen["messages"] if m.type == "human"]
+    assert second_human == ["msg-one", "msg-two"]
+    history = store.get_history("s-cc")
+    assert [m.content for m in history] == [
+        "msg-one", "first-reply", "msg-two", "second-reply",
+    ]
+
+
 async def test_stream_injects_system_prompt_first():
     captured = {}
 

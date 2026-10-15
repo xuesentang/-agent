@@ -13,6 +13,8 @@ def _base_model(temperature: float) -> ChatOpenAI:
         api_key=settings.llm_api_key,
         temperature=temperature,
         max_tokens=settings.llm_max_tokens,
+        timeout=settings.llm_timeout,  # review Minor #7: never hang SSE on a silent upstream
+        max_retries=settings.llm_max_retries,
     )
 
 

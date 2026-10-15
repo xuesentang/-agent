@@ -20,18 +20,28 @@ PASS_THRESHOLD = 0.9
 FIELDS = ("order_id", "claim_type", "expected_solution")
 
 
-def _match_field(expected: Any, got: Any) -> bool:
-    """Null must match null; non-null matches by keyword containment."""
+EXACT_FIELDS = ("order_id", "claim_type")  # containment would conflate refund/return_refund
+CONTAINMENT_FIELDS = ("expected_solution",)
+
+
+def _match_field(expected: Any, got: Any, exact: bool) -> bool:
+    """Null must match null. Exact fields compare by ==; expected_solution by containment."""
     if expected is None:
         return got is None
     if got is None:
         return False
-    return str(expected) in str(got)
+    return str(expected) == str(got) if exact else str(expected) in str(got)
 
 
 def score_case(expected: dict, got: dict) -> tuple[bool, list[str]]:
+    if "error" in got:
+        return False, list(FIELDS)  # extraction exception: always FAIL, never a null-hit pass
     failures = [
-        field for field in FIELDS if not _match_field(expected.get(field), got.get(field))
+        field
+        for field in FIELDS
+        if not _match_field(
+            expected.get(field), got.get(field), exact=field in EXACT_FIELDS
+        )
     ]
     return not failures, failures
 
