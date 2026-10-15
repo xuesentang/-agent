@@ -1,0 +1,13 @@
+{"text": "我的订单号20241015001，鞋子穿两天开胶了，我要退货退款", "expected": {"order_id": "20241015001", "claim_type": "return_refund", "expected_solution": "退货退款"}}
+{"text": "上周买的空气炸锅，单号20241015002，用了三次就不加热了，你们这什么质量啊，我要退款，必须全款退给我", "expected": {"order_id": "20241015002", "claim_type": "refund", "expected_solution": "退款"}}
+{"text": "收到的衣服有色差，我要退钱", "expected": {"order_id": null, "claim_type": "refund", "expected_solution": "退款"}}
+{"text": "手机壳颜色发错了，和我下单的不一样，给我换一个正确的", "expected": {"order_id": null, "claim_type": "exchange", "expected_solution": "换"}}
+{"text": "我要投诉这个商家，发货慢了整整十天，找客服还爱答不理，要求平台处理他们", "expected": {"order_id": null, "claim_type": "complaint", "expected_solution": null}}
+{"text": "快递盒子破了个大洞，里面的杯子全碎了，你们必须赔我一个", "expected": {"order_id": null, "claim_type": "compensation", "expected_solution": "赔"}}
+{"text": "我的订单号是20241015003，东西用了两天就坏了，我要退qian", "expected": {"order_id": "20241015003", "claim_type": "refund", "expected_solution": "退款"}}
+{"text": "单号20241015004，尺码买大了穿不了，能不能帮我huan货", "expected": {"order_id": "20241015004", "claim_type": "exchange", "expected_solution": "换"}}
+{"text": "单号是SF2024开头那个，鞋子磨脚得厉害，我要退货退款", "expected": {"order_id": null, "claim_type": "return_refund", "expected_solution": "退货退款"}}
+{"text": "我暂时没有订单要处理，就想先问问你们七天无理由退货具体怎么操作", "expected": {"order_id": null, "claim_type": "inquiry", "expected_solution": null}}
+{"text": "订单号20241015006，我买的39码太小了，帮我换成40码的", "expected": {"order_id": "20241015006", "claim_type": "exchange", "expected_solution": "40"}}
+{"text": "蓝牙耳机单号20241015007，右耳没声音了，还在保修期内，想寄回去修一下", "expected": {"order_id": "20241015007", "claim_type": "repair", "expected_solution": "修"}}
+{"text": "订单20241015008，这单我要退款，另外我要投诉上次的客服态度太差了", "expected": {"order_id": "20241015008", "claim_type": "refund", "expected_solution": "退款"}}
