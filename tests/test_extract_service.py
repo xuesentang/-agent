@@ -19,7 +19,7 @@ class FakeModel:
         self._structured = structured
 
     def with_structured_output(self, schema, method=None):
-        assert method == "function_calling"
+        assert method == "json_mode"
         assert schema is AfterSalesInfo
         return self._structured
 

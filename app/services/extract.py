@@ -15,9 +15,10 @@ class ExtractionError(Exception):
 async def extract_after_sales(text: str, model: ChatOpenAI | None = None) -> dict:
     base_model = model if model is not None else get_extract_model()
     try:
-        structured = base_model.with_structured_output(
-            AfterSalesInfo, method="function_calling"
-        )
+        # D2 回退链实录：GLM-5.3-Flash 经 function_calling 不产生 tool_calls
+        # （直接在 content 输出正确 JSON），故按 spec 既定回退切换 json_mode，
+        # 依赖 prompt 中的 JSON 指引 + Pydantic 校验。
+        structured = base_model.with_structured_output(AfterSalesInfo, method="json_mode")
     except Exception as exc:
         raise ExtractionError(f"structured output setup failed: {exc}") from exc
 

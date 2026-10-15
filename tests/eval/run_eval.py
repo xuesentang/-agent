@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # project root
+
 CASES_PATH = Path(__file__).parent / "after_sales_cases.jsonl"
 PASS_THRESHOLD = 0.9
 FIELDS = ("order_id", "claim_type", "expected_solution")
