@@ -58,7 +58,7 @@ curl -sN -X POST http://127.0.0.1:8000/api/v1/chat/stream \
 ## 测试与评测
 
 ```bash
-python -m pytest                       # 79 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                       # 88 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py       # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py  # CH02 工具选择 eval，13 条（需真实 key）
 ```
@@ -83,7 +83,7 @@ eval 阈值 90%。最近真实运行：CH01 抽取 12/13 = 92%；CH02 工具选�
 
 1. 只做**单轮**工具调用：模型一次定工具（可并行多个）→ 执行 → 回灌收敛；多轮自动循环的 Agent Loop 是 CH05。
 2. 「邮费是多少」这类换说法问题 LIKE 查不出——刻意保留的漏召回样例，CH03 换向量语义检索后应能召回。
-3. mock 三工具（订单/商品/物流）函数内随机生成，不接真实系统；`create_ticket` 工单号当日序列无行锁，高并发有撞号窗口（CH08 权限与审计章前以注释标注）。
+3. mock 三工具（订单/商品/物流）函数内随机生成，不接真实系统（时间基准为固定常量，同入参跨天调用逐字一致）；`create_ticket` 工单号当日序列生成，撞号有 `IntegrityError → seq+1` 重试兜底，但取号本身非原子，极端并发下仍可能连续撞号（CH08 权限与审计章前以注释标注）。
 4. 无鉴权，仅限本地/内网开发用；会话随服务重启仍在（DB 持久化），但无用户体系。
 5. GLM-5.3-Flash 思考模式不可关，首 token 延迟高于纯非思考模型。
 6. SSE `data` 为 JSON，中文走 `\u` 转义（前端解析无影响；CH08 工具结果序列化时统一处理中文不转义）。

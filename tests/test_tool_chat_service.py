@@ -8,6 +8,7 @@ from langchain_core.tools import tool
 
 from app.core.tools.registry import ToolRegistry
 from app.models.message import Message
+from app.repositories import conversation_repo, message_repo
 from app.services.tool_chat import chat_with_tools
 
 
@@ -205,3 +206,86 @@ async def test_system_prompt_first_with_tool_guidance(session):
     assert isinstance(model.seen_messages[0], SystemMessage)
     assert "小智" in model.seen_messages[0].content
     assert "query_order" in model.seen_messages[0].content  # 工具指引在 system prompt 里
+
+
+async def test_unpaired_tool_calls_degraded(session):
+    """review C1:中断轮落库 [user, assistant(tool_calls)](tool 未落)时,
+    下一轮回灌不得出现孤立 tool_calls(否则 GLM/OpenAI 端点 HTTP 400,
+    会话被永久毒化)。预期:降级为普通 AIMessage。"""
+    from app.models.message import Message
+
+    conv = await conversation_repo.get_or_create(session, None, "s-poison")
+    session.add_all(
+        [
+            Message(conversation_id=conv.id, role="user", content="订单1001物流"),
+            Message(
+                conversation_id=conv.id,
+                role="assistant",
+                content=None,
+                tool_calls=[{"name": "query_logistics", "args": {"order_id": "1001"}, "id": "call_x", "type": "tool_call"}],
+            ),
+            # 故意不落 tool 消息:模拟流式回答中用户关页面
+        ]
+    )
+    await session.commit()
+
+    model = FakeToolModel()
+    events = [
+        e
+        async for e in chat_with_tools(
+            "s-poison", "还在吗", session=session, model=model, registry=_registry()
+        )
+    ]
+    assert events[-1].event == "done"
+    # 回灌序列里不得有带 tool_calls 的 AIMessage。
+    poisoned = [
+        m for m in model.seen_messages
+        if getattr(m, "tool_calls", None)
+    ]
+    assert poisoned == []
+
+
+async def test_new_conversation_force_new(session):
+    """review I2:new_conversation=True 必须真开新会话(不复用最近进行中的)。"""
+    m1 = FakeToolModel()
+    first = [
+        e
+        async for e in chat_with_tools("s-new", "第一轮", session=session, model=m1, registry=_registry())
+    ]
+    conv1 = first[-1].data["conversation_id"]
+    m2 = FakeToolModel()
+    second = [
+        e
+        async for e in chat_with_tools(
+            "s-new", "第二轮", new_conversation=True, session=session, model=m2, registry=_registry()
+        )
+    ]
+    assert second[-1].data["conversation_id"] != conv1
+
+
+async def test_other_users_conversation_id_not_reused(session):
+    """review Minor 7:显式传入他人会话 id 不得续指(静默走新建)。"""
+    other = await conversation_repo.get_or_create(session, None, "someone-else")
+    model = FakeToolModel()
+    events = [
+        e
+        async for e in chat_with_tools(
+            "s-own", "在吗", conversation_id=other.id, session=session, model=model, registry=_registry()
+        )
+    ]
+    assert events[-1].data["conversation_id"] != other.id
+
+
+async def test_persist_failure_emits_db_error(session):
+    """review I4:落库失败必须 yield error 收尾,流不裸奔。"""
+    from unittest.mock import patch
+
+    from app.repositories import message_repo as repo_module
+
+    model = FakeToolModel()
+    with patch.object(
+        repo_module, "add_message", side_effect=RuntimeError("connection dead")
+    ):
+        events = await _events(model, session)
+    assert events[-1].event == "error"
+    assert events[-1].data["code"] == "DB_ERROR"

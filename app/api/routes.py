@@ -18,8 +18,11 @@ router = APIRouter(prefix="/api/v1")
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
-    # CH02: 不传则新建会话;done 事件回传 conversation_id,前端带它续聊。
+    # CH02: 不传则复用该用户最近进行中的会话;done 事件回传 conversation_id。
+    # new_conversation=True 强制开新会话(前端「新会话」按钮,review I2:
+    # 只把前端 conversation_id 清成 null 并不够——服务端 None 的语义是复用)。
     conversation_id: int | None = None
+    new_conversation: bool = False
 
     @field_validator("session_id")
     @classmethod
@@ -53,7 +56,11 @@ async def chat_stream(
     session: AsyncSession = Depends(get_session),
 ) -> AsyncIterable[ServerSentEvent]:
     async for event in chat_with_tools(
-        request.session_id, request.message, request.conversation_id, session=session
+        request.session_id,
+        request.message,
+        request.conversation_id,
+        new_conversation=request.new_conversation,
+        session=session,
     ):
         yield event
 

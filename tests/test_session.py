@@ -4,7 +4,7 @@ CH02 起历史落 messages 表,裁剪对象变为从消息表重建的 LangChain
 纯函数 trim_history(messages, token_budget) 直接复用。
 """
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.core.session import trim_history
 
@@ -33,3 +33,17 @@ def test_trim_keeps_system_first():
 def test_trim_within_budget_keeps_all():
     messages = [HumanMessage(content="短消息"), AIMessage(content="短回复")]
     assert trim_history(messages, token_budget=2048) == messages
+
+
+def test_trim_keeps_trailing_tool_message():
+    """review C1 双保险:带工具轮次结尾 [user, ai(tool_calls), tool] 不得被
+    裁成孤立 tool_calls(end_on 含 tool)。"""
+    tool_call = {"name": "query_logistics", "args": {"order_id": "1"}, "id": "c1", "type": "tool_call"}
+    messages = [
+        HumanMessage(content="订单1物流"),
+        AIMessage(content="", tool_calls=[tool_call]),
+        ToolMessage(content="已签收", tool_call_id="c1"),
+    ]
+    trimmed = trim_history(messages, token_budget=2048)
+    assert [m.type for m in trimmed] == ["human", "ai", "tool"]
+    assert trimmed[2].tool_call_id == "c1"

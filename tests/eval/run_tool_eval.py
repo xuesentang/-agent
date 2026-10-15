@@ -20,6 +20,12 @@ CASES_PATH = Path(__file__).parent / "ch02_tool_cases.jsonl"
 PASS_THRESHOLD = 0.9
 
 
+def score_case(expected: str, got: str) -> bool:
+    """工具名精确匹配;error:* 恒 FAIL(CH01 评分器同语义:
+    错误响应不得蒙中任何标注,包括 none)。"""
+    return not got.startswith("error:") and got == expected
+
+
 async def select_tool(text: str) -> str:
     """真实链路的一跳:全量工具 bind 后让模型定工具,返回工具名或 none。
 
@@ -51,7 +57,7 @@ async def run(select: Callable[[str], str] | None = None) -> int:
             got = await select(case["text"])
         except Exception as exc:  # noqa: BLE001 - eval reports, never crashes
             got = f"error:{exc}"
-        ok = got == case["expected"]
+        ok = score_case(case["expected"], got)
         if ok:
             passed += 1
         status = "PASS" if ok else "FAIL"

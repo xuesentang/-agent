@@ -39,6 +39,8 @@ async def test_like_wildcards_are_escaped(session):
     # 未转义时 % 会匹配全部;转义后按字面匹配,数据里没有字面 % → 0 命中。
     assert await faq_repo.search_by_keyword(session, "%") == []
     assert await faq_repo.search_by_keyword(session, "_") == []
+    # 反斜杠是 ESCAPE 字符本身,字面反斜杠也要转义(review Minor 2)。
+    assert await faq_repo.search_by_keyword(session, "\\") == []
 
 
 async def test_limit_caps_results(session):

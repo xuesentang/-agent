@@ -42,6 +42,11 @@ _LOGISTICS_STAGES = [
 ]
 _LOGISTICS_CITIES = ["北京", "上海", "广州", "深圳", "杭州", "成都", "武汉", "西安"]
 
+# mock 数据的固定时间基准(review Minor 1):由 seed 派生偏移、不用 today/now,
+# 保证同一入参跨天调用也逐字一致(可复现是 AGENTS.md 数据规则的要求)。
+_MOCK_EPOCH_DATE = date(2026, 1, 1)
+_MOCK_EPOCH_DT = datetime(2026, 6, 1, 8, 0, 0)
+
 
 @tool
 def query_order(order_id: str) -> str:
@@ -51,8 +56,7 @@ def query_order(order_id: str) -> str:
     name, price = rng.choice(_ORDER_PRODUCTS)
     qty = rng.randint(1, 3)
     status = rng.choice(_ORDER_STATUS)
-    days_ago = rng.randint(0, 29)
-    order_date = (date.today() - timedelta(days=days_ago)).isoformat()
+    order_date = (_MOCK_EPOCH_DATE + timedelta(days=rng.randint(0, 300))).isoformat()
     return (
         f"订单 {order_id}:{name} × {qty},实付 ¥{price * qty:.2f},"
         f"当前状态「{status}」,下单日期 {order_date}。"
@@ -81,7 +85,7 @@ def query_logistics(order_id: str) -> str:
     start = rng.randint(0, len(_LOGISTICS_STAGES) - n)
     stages = _LOGISTICS_STAGES[start : start + n]
     points = []
-    t = datetime.now() - timedelta(hours=rng.randint(2, 48))
+    t = _MOCK_EPOCH_DT + timedelta(hours=rng.randint(2, 240))
     for stage in reversed(stages):
         points.append((t, rng.choice(_LOGISTICS_CITIES), stage))
         t -= timedelta(hours=rng.randint(4, 30))

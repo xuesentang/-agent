@@ -3,7 +3,7 @@
 > 本文件面向后续所有协作者（人或 AI agent）。动手前先读本文件。
 > 与 README / dev-notes 冲突时，以最新章的 dev-notes 为准，并回头修订本文件。
 >
-> **状态：初版 v0.1（2026-10-15，信息不全时立稿）。** 章级提示词 / 教程整理稿 / 建表语句到位后，本节内容按实际修订——本文件是活文档，不是定稿。
+> **状态：v0.2（2026-10-16）。** 章级提示词 / 建表语句已到位并完成 CH02，信息不全的初版判断已按实际修订；后续每章交付后同步更新 §6。本文件是活文档，不是定稿。
 
 ## 1. 项目定位
 
@@ -23,7 +23,7 @@
 
 - 延续 CH01：Python 3.13 + FastAPI + LangChain（langchain-openai ChatOpenAI）+ pydantic-settings + pytest。
 - 模型接入统一 OpenAI 协议：`LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` 全走 `.env`，代码零硬编码。当前默认 GLM-5.3-Flash（智谱，OpenAI 兼容）。
-- 结构化输出默认 `function_calling`；回退链 `function_calling` → `json_mode` → **停下来问用户**，不自行换方案。
+- 结构化输出（`with_structured_output`，CH01 售后信息抽取用）默认 `json_mode`（`llm_structured_method` 可配）：GLM-5.3-Flash 实测走 function_calling 不产 tool_calls、只在 content 输出 JSON；回退链 `function_calling` → `json_mode` → **停下来问用户**，不自行换方案。与 CH02 起的 agent 工具循环（`bind_tools` + `tool_calls`）是两套机制，勿混述——后者 GLM 实测正常产 tool_calls。
 - 引入新依赖或新 API 用法前：先查 Context7 / 官方文档确认当前版本用法，查证结论写进 spec 或 dev-notes。
 - requirements.txt 已含 langgraph / langgraph-checkpoint / langgraph-prebuilt / pandas 等，后续章节预计用到；新增依赖先确认用途再装。
 - 数据库方言以各章提示词附带的建表语句为准（待建表语句到位后确认并回填本节）。
@@ -45,5 +45,7 @@
 
 ## 6. 当前进度
 
-- **CH01 纯对话：已完成。** 36 项单测全绿；真实 eval 12/13 = 92%；本地 HEAD = `1c4d693`（未推送，远端 main 为旧项目历史，覆盖需用户自行 force push）。
-- 待办：CH02 起按章提示词开发；无外部数据集依赖，各章数据由 AI 按提示词生成（脚本化、可复现、注明合成数据）。
+- **CH01 纯对话：已完成。** 36 项单测全绿；真实 eval 12/13 = 92%。
+- **CH02 工具调用 + 数据库 + SSE 聊天：已完成（本章收尾提交待推送）。** 88 项单测全绿（含判分器单测）；工具选择 eval 13/13 连跑两轮；真实 MySQL 8.4（Docker，主机 3307）四表 + 30 条 FAQ 种子全链路验收过；三条章验收标准全过（订单 1001 物流 / 退货政策 / 「邮费是多少」漏召回）。code review 1C + 3I + 10M 已修（见 dev-notes/ch02.md）。
+- git：本地 main 领先 origin/main 7 个提交（origin/main = `eade56a`），快进推送即可，无需 force。
+- 待办：CH03 起按章提示词开发；无外部数据集依赖，各章数据由 AI 按提示词生成（脚本化、可复现、注明合成数据）。

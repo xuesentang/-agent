@@ -59,19 +59,44 @@ def _to_langchain(msgs: list[Message]) -> list[BaseMessage]:
     """messages 表记录 → LangChain 消息,按 Chat Completions 协议重建工具轨迹。
 
     assistant(tool_calls) 与 tool(tool_call_id) 两条对号入座(spec Review Focus 2)。
+    配对清洗(review C1):带工具轮次若被中断(用户关页面/上游异常),落库可能是
+    [user, assistant(tool_calls)](tool 消息未落)或结尾的 tool 消息被 trim 裁掉。
+    此时若原样回灌,assistant 的 tool_calls 没有对应 tool 消息,GLM/OpenAI 端点
+    直接 HTTP 400,且该会话此后每轮都失败(会话被永久毒化)。
+    处置:配不齐的 assistant(tool_calls) 降级为普通 AIMessage(丢掉 tool_calls),
+    协议合法、内容不丢。
     """
     out: list[BaseMessage] = []
-    for m in msgs:
+    for i, m in enumerate(msgs):
         if m.role == "user":
             out.append(HumanMessage(content=m.content or ""))
         elif m.role == "assistant":
             if m.tool_calls:
-                out.append(AIMessage(content=m.content or "", tool_calls=m.tool_calls))
+                paired = _tool_calls_paired(msgs, i)
+                if paired:
+                    out.append(AIMessage(content=m.content or "", tool_calls=m.tool_calls))
+                else:
+                    # 降级:丢掉 tool_calls,保留正文(通常为空)。
+                    out.append(AIMessage(content=m.content or ""))
             else:
                 out.append(AIMessage(content=m.content or ""))
         else:  # tool
             out.append(ToolMessage(content=m.content or "", tool_call_id=m.tool_call_id or ""))
     return out
+
+
+def _tool_calls_paired(msgs: list[Message], assistant_idx: int) -> bool:
+    """assistant(tool_calls) 之后是否紧跟覆盖全部 call id 的 tool 消息。"""
+    call_ids = {tc.get("id") for tc in msgs[assistant_idx].tool_calls or []}
+    if not call_ids:
+        return False
+    following: set[str] = set()
+    for m in msgs[assistant_idx + 1 :]:
+        if m.role != "tool":
+            break
+        if m.tool_call_id:
+            following.add(m.tool_call_id)
+    return call_ids <= following
 
 
 def _sse(event: str, data: dict) -> ServerSentEvent:
@@ -83,6 +108,7 @@ async def chat_with_tools(
     message: str,
     conversation_id: int | None = None,
     *,
+    new_conversation: bool = False,
     session: AsyncSession,
     model: ChatOpenAI | None = None,
     registry: ToolRegistry | None = None,
@@ -90,16 +116,27 @@ async def chat_with_tools(
 ) -> AsyncGenerator[ServerSentEvent, None]:
     """Yield SSE events(spec D7):
     tool_start → token… → tool_end → token… → done,或单条 error。
-    done 事件带 conversation_id,前端据此续聊。
+    done 事件带 conversation_id,前端据此续聊;new_conversation=True 强制开新会话。
     """
     model = model if model is not None else get_chat_model()
     registry = registry if registry is not None else build_default_registry()
     executor = executor if executor is not None else ToolExecutor(registry)
     bound = model.bind_tools(registry.for_bind())
 
+    async def persist(conversation_id: int, **kwargs) -> str | None:
+        """落库;失败返回脱敏错误信息(不抛)。review I4:落库阶段的 DB 异常
+        (死连接/锁等待)也必须 yield error 收尾,不能让流裸奔中断。"""
+        try:
+            await message_repo.add_message(session, conversation_id, **kwargs)
+            return None
+        except Exception as exc:
+            return _sanitize(str(exc))
+
     async with _get_lock(session_id):
         try:
-            conv = await conversation_repo.get_or_create(session, conversation_id, session_id)
+            conv = await conversation_repo.get_or_create(
+                session, conversation_id, session_id, force_new=new_conversation
+            )
         except Exception as exc:
             yield _sse("error", {"code": "DB_ERROR", "message": _sanitize(str(exc))})
             return
@@ -125,16 +162,18 @@ async def chat_with_tools(
                 yield _sse("error", {"code": "UPSTREAM_ERROR", "message": _sanitize(str(exc))})
                 return
             # 上游出错不落半截(CH01 语义):user 消息在拿到响应后才落库。
-            await message_repo.add_message(session, conv.id, "user", message)
+            err = await persist(conv.id, role="user", content=message)
+            if err:
+                yield _sse("error", {"code": "DB_ERROR", "message": err})
+                return
 
             # 2. 有工具调用:状态帧 → 执行 → 回灌。
             tool_messages: list[ToolMessage] = []
             tool_results: list[ToolResult] = []
             if first.tool_calls:
-                await message_repo.add_message(
-                    session,
+                err = await persist(
                     conv.id,
-                    "assistant",
+                    role="assistant",
                     content=first.content or None,
                     tool_calls=[
                         {
@@ -146,6 +185,9 @@ async def chat_with_tools(
                         for tc in first.tool_calls
                     ],
                 )
+                if err:
+                    yield _sse("error", {"code": "DB_ERROR", "message": err})
+                    return
                 for tc in first.tool_calls:
                     yield _sse(
                         "tool_start",
@@ -165,13 +207,15 @@ async def chat_with_tools(
                     tool_messages.append(
                         ToolMessage(content=result.content, tool_call_id=result.tool_call_id)
                     )
-                    await message_repo.add_message(
-                        session,
+                    err = await persist(
                         conv.id,
-                        "tool",
+                        role="tool",
                         content=result.content[:MAX_TOOL_CONTENT_LENGTH],
                         tool_call_id=result.tool_call_id,
                     )
+                    if err:
+                        yield _sse("error", {"code": "DB_ERROR", "message": err})
+                        return
 
             # 3. 收敛:流式吐终答;二次仍要工具 → 兜底摘要,不再执行(spec §3)。
             messages = prompt_messages + [first] + tool_messages
@@ -197,15 +241,21 @@ async def chat_with_tools(
                 return
 
             if saw_tool_calls and not reply_parts:
-                # 兜底:模型二次又要调工具,不执行,直接把已查到的结果组织给它。
-                fallback = " ".join(r.content for r in tool_results)[:MAX_TOOL_CONTENT_LENGTH]
-                if fallback:
-                    reply_parts.append(fallback)
-                    yield _sse("token", {"content": fallback})
+                # 兜底(review Minor 4):模型二次又要调工具,不执行,把已查到的
+                # 结果包装成一句人话给用户,不直出原始工具文本。
+                raw = " ".join(r.content for r in tool_results)[:MAX_TOOL_CONTENT_LENGTH]
+                fallback = (
+                    f"已为您查到以下信息：{raw}"
+                    if raw
+                    else "这个问题我暂时无法处理，请您稍后再试，或把情况描述得更具体一些。"
+                )
+                reply_parts.append(fallback)
+                yield _sse("token", {"content": fallback})
 
-            await message_repo.add_message(
-                session, conv.id, "assistant", content="".join(reply_parts)
-            )
+            err = await persist(conv.id, role="assistant", content="".join(reply_parts))
+            if err:
+                yield _sse("error", {"code": "DB_ERROR", "message": err})
+                return
             yield _sse(
                 "done",
                 {

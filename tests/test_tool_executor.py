@@ -110,6 +110,16 @@ async def test_transient_error_retried_once():
 
 
 async def test_no_retry_for_business_failure():
-    # 非 transient 异常不重试:flaky_tool 只被调一次。
-    ex = ToolExecutor(_registry_with([flaky_tool]))
-    await ex.execute(_call("flaky_tool", {"x": "a"}))
+    # 非 transient 异常不重试:flaky_tool 只被调一次(review Minor 3: 补计数断言)。
+    calls = {"n": 0}
+
+    @tool
+    def counting_fail(x: str) -> str:
+        """计数失败。x: 任意"""
+        calls["n"] += 1
+        raise RuntimeError("业务失败")
+
+    ex = ToolExecutor(_registry_with([counting_fail]))
+    result = await ex.execute(_call("counting_fail", {"x": "a"}))
+    assert result.ok is False
+    assert calls["n"] == 1

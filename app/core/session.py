@@ -28,7 +28,11 @@ def trim_history(
         token_counter=count_tokens_approximately,
         max_tokens=token_budget,
         start_on="human",
-        end_on=("human", "ai"),
+        # end_on 含 "tool":带工具轮次的结尾是 [assistant(tool_calls), tool],
+        # 若只允许 human/ai 结尾,ToolMessage 会被裁掉、留下孤立 tool_calls,
+        # 回灌 LLM 违反 Chat Completions 协议(review C1)。配对兜底在
+        # _to_langchain 的清洗逻辑,双保险。
+        end_on=("human", "ai", "tool"),
         allow_partial=False,
     )
     return system + list(trimmed)

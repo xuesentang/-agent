@@ -6,13 +6,16 @@ const sendBtn = document.getElementById("send");
 const newChatBtn = document.getElementById("new-chat");
 
 // 会话标识:session_id 是用户键(同一浏览器连续聊);conversation_id 由服务端
-// done 事件回传,新会话按钮清空它,让下一条消息开新的一通对话。
+// done 事件回传。新会话按钮置 pendingNewConversation——下一条消息带
+// new_conversation=true 让服务端真新建(review I2:服务端 None 的语义是复用,
+// 前端单方面清 conversation_id 并不能开新会话)。
 let sessionId = localStorage.getItem("kefu_session_id");
 if (!sessionId) {
   sessionId = "web-" + (crypto.randomUUID ? crypto.randomUUID() : Date.now());
   localStorage.setItem("kefu_session_id", sessionId);
 }
 let conversationId = null;
+let pendingNewConversation = false;
 
 function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -40,14 +43,18 @@ function addAssistantTurn() {
   msg.appendChild(bubble);
   messagesEl.appendChild(msg);
   scrollToBottom();
-  return { badges, bubble };
+  // 徽章按 tool_call_id 对号(review I3):一轮可能并行调多个工具,
+  // 事件流是 start(A) start(B) end(A) end(B),必须按 id 更新,
+  // 不能用单个 activeBadge 指针(会张冠李戴、丢事件)。
+  return { badges, bubble, badgeMap: new Map() };
 }
 
-function addBadge(badges, { label, cls }) {
+function addBadge(turn, { id, label, cls }) {
   const badge = document.createElement("span");
   badge.className = "badge " + cls;
   badge.textContent = label;
-  badges.appendChild(badge);
+  turn.badges.appendChild(badge);
+  if (id) turn.badgeMap.set(id, badge);
   return badge;
 }
 
@@ -62,18 +69,20 @@ function showError(text) {
 function handleEvent(event, data, turn) {
   switch (event) {
     case "tool_start":
-      turn.activeBadge = addBadge(turn.badges, {
+      addBadge(turn, {
+        id: data.tool_call_id,
         label: "⏳ " + data.name + " 调用中…",
         cls: "running",
       });
       break;
-    case "tool_end":
-      if (turn.activeBadge) {
-        turn.activeBadge.textContent = (data.ok ? "✅ " : "❌ ") + data.name;
-        turn.activeBadge.className = "badge " + (data.ok ? "ok" : "fail");
-        turn.activeBadge = null;
+    case "tool_end": {
+      const badge = turn.badgeMap.get(data.tool_call_id);
+      if (badge) {
+        badge.textContent = (data.ok ? "✅ " : "❌ ") + data.name;
+        badge.className = "badge " + (data.ok ? "ok" : "fail");
       }
       break;
+    }
     case "token":
       turn.bubble.textContent += data.content;
       scrollToBottom();
@@ -96,7 +105,6 @@ async function send() {
   inputEl.value = "";
   sendBtn.disabled = true;
   const turn = addAssistantTurn();
-  turn.activeBadge = null;
 
   try {
     const resp = await fetch("/api/v1/chat/stream", {
@@ -105,9 +113,11 @@ async function send() {
       body: JSON.stringify({
         session_id: sessionId,
         message: text,
-        conversation_id: conversationId,
+        conversation_id: pendingNewConversation ? null : conversationId,
+        new_conversation: pendingNewConversation,
       }),
     });
+    pendingNewConversation = false;
     if (!resp.ok || !resp.body) {
       showError("HTTP " + resp.status);
       return;
@@ -147,6 +157,7 @@ inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.isComposing) send();
 });
 newChatBtn.addEventListener("click", () => {
-  conversationId = null; // 下一条消息开新会话
+  // 只清 UI 不够(review I2):置 pendingNewConversation,下一条消息让服务端真新建。
+  pendingNewConversation = true;
   messagesEl.innerHTML = "";
 });
