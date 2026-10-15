@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小智 · 电商智能客服</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <div class="brand">
+        <span class="avatar">🤖</span>
+        <div>
+          <div class="title">小智 · 电商智能客服</div>
+          <div class="subtitle">CH02 · Function Calling 工具链演示</div>
+        </div>
+      </div>
+      <button id="new-chat" title="开一轮新会话">新会话</button>
+    </header>
+
+    <main id="messages" aria-live="polite"></main>
+
+    <footer id="composer">
+      <input id="input" type="text" placeholder="问点什么吧，如：订单1001的物流到哪了" autocomplete="off" />
+      <button id="send">发送</button>
+    </footer>
+  </div>
+  <script src="/chat.js"></script>
+</body>
+</html>

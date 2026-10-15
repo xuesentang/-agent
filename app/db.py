@@ -21,8 +21,12 @@ def get_engine() -> AsyncEngine:
     return create_async_engine(
         settings.database_url,
         echo=settings.db_echo,
-        # 长连接断线自愈:MySQL wait_timeout 掐掉空闲连接后自动重连。
-        pool_pre_ping=True,
+        # pool_pre_ping 在 aiomysql 上不可用:其 ping(reconnect) 签名要求参数,
+        # SQLAlchemy 的 mysql 方言 do_ping 调 dbapi_connection.ping() 不带参 →
+        # TypeError(集成验收抓到,单测 SQLite 无此路径)。改用 pool_recycle 规避:
+        # 连接 1 小时回收,短于 MySQL 默认 wait_timeout(8h),不会拿到被掐断的死连接。
+        pool_pre_ping=False,
+        pool_recycle=3600,
     )
 
 
