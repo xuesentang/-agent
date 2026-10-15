@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     # with_structured_output method: "json_mode" (GLM) or "function_calling".
     llm_structured_method: str = "json_mode"
     history_token_budget: int = 2048
+    # CH02: database (Docker MySQL on host port 3307, see docker-compose.yml).
+    database_url: str = "mysql+aiomysql://root:root@127.0.0.1:3307/kefu_agent"
+    db_echo: bool = False
+    # CH02: tool execution timeout (registry executor).
+    tool_timeout_seconds: float = 10.0
 
 
 @lru_cache

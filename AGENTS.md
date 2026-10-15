@@ -38,7 +38,8 @@
 
 ## 5. Git 与安全纪律
 
-- 只在本地提交；push 到远端（github.com/xuesentang/-agent）由用户自行执行。禁止 force push、禁止 rebase 公共历史。
+- **每章完结：本地 commit + push 到 origin/main（github.com/xuesentang/-agent）**——2026-10-15 用户明确授权「每开发完一章向 github 提交一次」。章中中间提交只入本地。
+- 禁止 force push、禁止 rebase 公共历史。
 - 禁止提交：`.env`、密钥 token、含个人信息的数据、大文件。
 - 删除文件、改环境或密钥、数据库迁移、破坏性 git 操作、对外发布前需明确确认；本文件已确认的同类操作不重复问。
 
