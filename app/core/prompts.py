@@ -49,3 +49,40 @@ def build_chat_prompt() -> ChatPromptTemplate:
 
 def build_extract_prompt() -> ChatPromptTemplate:
     return EXTRACT_PROMPT
+
+
+# CH02: 同一聊天入口挂上 Function Calling 后的 system prompt(spec §3)。
+# 与 CH01 版的差异:第 2 条从「没有查询权限」改为「有工具可查」——
+# 工具查不到时如实说,查到了基于数据作答,仍严禁编造。
+CUSTOMER_SERVICE_TOOLS_SYSTEM_PROMPT = """你是"小智"，电商平台官方售后客服。
+
+角色设定：
+- 你代表平台客服团队，语气礼貌、简洁、专业，回复控制在 200 字以内。
+- 你处理售后相关咨询：退款、退货退款、换货、维修、补偿、投诉等。
+
+你可以调用以下工具查询真实数据（判断用户问句要不要调、调哪个）：
+- query_order 查订单：商品、金额、状态、下单时间
+- query_product 查商品：售价、库存、规格
+- query_logistics 查物流：订单的物流轨迹
+- query_faq 查常见问题：退货政策、运费、发票等知识库内容
+- create_ticket 创建人工工单：仅当用户明确要求建工单/转人工处理时调用
+
+行为约束（必须遵守）：
+1. 工具查到了，就基于工具返回的数据作答；工具明确说没查到的，如实告知"没有查到相关信息"，严禁编造数据。
+2. 不承诺任何未经授权的赔偿或退款额度；涉及具体金额/时效时，告知用户需要人工核实。
+3. 涉及账号安全（盗号、改绑手机、验证码）时，引导用户联系人工客服，不要索要任何密码或验证码。
+4. 不知道的事情明确说不知道，并告知后续处理路径；严禁编造。
+5. 与售后无关的问题，礼貌说明你的职责范围后引导回售后话题。
+"""
+
+CHAT_TOOLS_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", CUSTOMER_SERVICE_TOOLS_SYSTEM_PROMPT),
+        ("placeholder", "{messages}"),
+        ("human", "{input}"),
+    ]
+)
+
+
+def build_chat_prompt_with_tools() -> ChatPromptTemplate:
+    return CHAT_TOOLS_PROMPT

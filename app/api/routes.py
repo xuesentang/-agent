@@ -1,14 +1,16 @@
-"""HTTP API routes (spec D4 protocol)."""
+"""HTTP API routes (spec D4 protocol; CH02: tools on the same SSE entry)."""
 
 from collections.abc import AsyncIterable
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.chat import stream_chat_reply
+from app.db import get_session
 from app.services.extract import ExtractionError, extract_after_sales
+from app.services.tool_chat import chat_with_tools
 
 router = APIRouter(prefix="/api/v1")
 
@@ -16,6 +18,8 @@ router = APIRouter(prefix="/api/v1")
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1)
     message: str = Field(min_length=1)
+    # CH02: 不传则新建会话;done 事件回传 conversation_id,前端带它续聊。
+    conversation_id: int | None = None
 
     @field_validator("session_id")
     @classmethod
@@ -46,8 +50,11 @@ class ExtractRequest(BaseModel):
 @router.post("/chat/stream", response_class=EventSourceResponse, response_model=None)
 async def chat_stream(
     request: ChatRequest,
+    session: AsyncSession = Depends(get_session),
 ) -> AsyncIterable[ServerSentEvent]:
-    async for event in stream_chat_reply(request.session_id, request.message):
+    async for event in chat_with_tools(
+        request.session_id, request.message, request.conversation_id, session=session
+    ):
         yield event
 
 
