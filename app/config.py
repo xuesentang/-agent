@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     judge_model: str = ""
     judge_base_url: str = ""
     judge_api_key: str = ""
+    # CH05: 工作流编排 — 知识类问题的置信度闸阈值与主力 Agent 的停止条件。
+    # kb_min_score 是 dense 相似度的粗筛线:实测 357 块库上库内问题 0.49~0.78、
+    # 库外 0.38~0.62 且有重叠,阈值只能挡明显离题的,精确判定交给证据自评。
+    kb_min_score: float = 0.45
+    agent_max_steps: int = 4
+    agent_token_budget: int = 6000
     # CH03: 对话挖知识定时任务(默认关;开了 lifespan 起后台循环,按 interval 跑一轮)
     mine_qa_enabled: bool = False
     mine_qa_interval_hours: int = 24

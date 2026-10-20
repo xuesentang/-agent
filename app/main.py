@@ -9,6 +9,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.config import get_settings
+from app.logging_setup import configure_logging
+
+configure_logging()
 
 logger = logging.getLogger("kefu_agent")
 

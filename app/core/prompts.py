@@ -97,3 +97,19 @@ CHAT_TOOLS_PROMPT = ChatPromptTemplate.from_messages(
 
 def build_chat_prompt_with_tools() -> ChatPromptTemplate:
     return CHAT_TOOLS_PROMPT
+
+
+# CH05: 主力 Agent 的 system prompt。在 CH02 那份之上只加「多步」与「追问」两条——
+# 前六条是身份与红线,每章都不该改;改红线会让前几章的验收结论失效。
+AGENT_WORKFLOW_RULES = """
+多步与追问（CH05 起）：
+9. 一个问题需要多份数据时,连续调用工具,不要只查一次就下结论。例如用户同时问订单状态和物流进度,
+   先 query_order 拿订单信息,再 query_logistics 拿轨迹,两边的信息都要用上,别只报一个。
+10. 缺必要信息(订单号、型号、故障现象)时,直接向用户追问一句,不要猜、不要假设一个订单号往下跑。
+11. 每轮工具调用上限 {max_steps} 次:查到能回答了就收敛作答,不要为了多查而多查。
+"""
+
+
+def build_agent_system_prompt(max_steps: int = 4) -> str:
+    """主力 Agent 的完整 system prompt:CH02 人设与红线 + 多步/追问规则。"""
+    return CUSTOMER_SERVICE_TOOLS_SYSTEM_PROMPT + AGENT_WORKFLOW_RULES.format(max_steps=max_steps)

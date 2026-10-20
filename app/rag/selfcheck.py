@@ -5,8 +5,14 @@
 先问模型一句:手里这几条证据,够不够回答这个问题?
 
 判「不够」的三种典型:证据讲的是别的事、只沾了点边、粒度对不上(问具体型号,
-证据只有品类政策)。判定失败(模型挂了/坏 JSON)一律当「够」——宁可放过,
-不可误杀,否则一次上游抖动会让所有正常问题都被拒答。
+证据只有品类政策)。
+
+判定失败(模型挂了/坏 JSON)走哪边,由调用方定(`on_error`):
+- 默认 `pass`(当够):CH04 时系统还没有人工出口,一次上游抖动把所有问题判死
+  等于服务停摆;
+- 传 `block`(当不够):CH05 起有「转人工/建工单」两个出口,多拒一次的代价降到
+  用户多点一下。策略写在调用点上,不藏在这个函数里——同一个函数在不同系统
+  成熟度下该有不同取舍。
 """
 
 from __future__ import annotations
@@ -41,8 +47,19 @@ class SelfCheckResult:
     degraded: bool = False  # 判定本身失败(不是证据不够),用于区分日志口径
 
 
-async def check_evidence(question: str, evidence: str, model=None) -> SelfCheckResult:
-    """证据够不够答这个问题。判不了就当够(degraded=True)。"""
+async def check_evidence(
+    question: str, evidence: str, model=None, *, on_error: str = "pass"
+) -> SelfCheckResult:
+    """证据够不够答这个问题。
+
+    on_error="pass"(默认)判不了就当够;on_error="block"判不了就当不够。
+    两种情况都带 degraded=True,日志/入池原因能分辨「判了弱」与「没判成」。
+    """
+    blocked = on_error == "block"
+
+    def _undecided(reason: str) -> SelfCheckResult:
+        return SelfCheckResult(useful=not blocked, reason=reason, degraded=True)
+
     if not evidence.strip():
         return SelfCheckResult(useful=False, reason="没有任何检索证据")
 
@@ -53,7 +70,7 @@ async def check_evidence(question: str, evidence: str, model=None) -> SelfCheckR
             model = get_extract_model()
         except Exception as exc:  # noqa: BLE001
             logger.warning("自评模型不可用,跳过证据自评:%s", exc)
-            return SelfCheckResult(useful=True, reason="", degraded=True)
+            return _undecided(f"自评模型不可用:{exc}")
 
     from app.rag.query_rewrite import _parse_json  # 同一套宽松 JSON 解析
 
@@ -71,14 +88,14 @@ async def check_evidence(question: str, evidence: str, model=None) -> SelfCheckR
             )
             payload = _parse_json(getattr(resp, "content", "") or "")
         except Exception as exc:  # noqa: BLE001
-            logger.warning("证据自评失败,按「够」处理:%s", exc)
-            return SelfCheckResult(useful=True, reason="", degraded=True)
+            logger.warning("证据自评失败(%s):%s", "判不够" if blocked else "按够处理", exc)
+            return _undecided(f"自评调用失败:{exc}")
     except Exception as exc:  # noqa: BLE001
-        logger.warning("证据自评失败,按「够」处理:%s", exc)
-        return SelfCheckResult(useful=True, reason="", degraded=True)
+        logger.warning("证据自评失败(%s):%s", "判不够" if blocked else "按够处理", exc)
+        return _undecided(f"自评调用失败:{exc}")
 
     if "useful" not in payload:
-        return SelfCheckResult(useful=True, reason="", degraded=True)
+        return _undecided("自评结果缺少 useful 字段")
     useful = bool(payload.get("useful"))
     reason = str(payload.get("reason") or "").strip()
     return SelfCheckResult(useful=useful, reason=reason)

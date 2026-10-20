@@ -1,0 +1,38 @@
+{"text": "我的包裹现在到哪了", "expected": "物流"}
+{"text": "快递三天没动了，是不是丢了", "expected": "物流"}
+{"text": "买的耳机什么时候发货", "expected": "物流"}
+{"text": "能不能把收货地址改成公司", "expected": "物流"}
+{"text": "单号 SF1234 今天能派送吗", "expected": "物流"}
+{"text": "我上周买的跑步鞋订单里都有啥", "expected": "订单"}
+{"text": "订单 1001 花了多少钱", "expected": "订单"}
+{"text": "我想把刚才那单取消掉", "expected": "订单"}
+{"text": "帮我看看我最近一笔订单是什么状态", "expected": "订单"}
+{"text": "这个订单能改成两件吗", "expected": "订单"}
+{"text": "这款冲锋衣防水等级是多少", "expected": "商品咨询"}
+{"text": "W40 有宽楦版本吗", "expected": "商品咨询"}
+{"text": "这双鞋是皮面还是网面", "expected": "商品咨询"}
+{"text": "LP300 支持蓝牙预约吗", "expected": "商品咨询"}
+{"text": "你们这条裤子有几个颜色", "expected": "商品咨询"}
+{"text": "拆封了还能退吗", "expected": "退款退货"}
+{"text": "退货运费谁出", "expected": "退款退货"}
+{"text": "退款一般几天到账", "expected": "退款退货"}
+{"text": "七天无理由是从哪天开始算", "expected": "退款退货"}
+{"text": "我买的保温杯不想要了，退货流程怎么走", "expected": "退款退货"}
+{"text": "之前申请的退款处理到哪一步了", "expected": "售后"}
+{"text": "耳机一边没声音，能修吗", "expected": "售后"}
+{"text": "上次报修的机器寄回去了，什么时候能寄回来", "expected": "售后"}
+{"text": "我要换货，尺码买小了", "expected": "售后"}
+{"text": "补偿一般多久能到账", "expected": "售后"}
+{"text": "这快递太慢了，我要投诉你们物流", "expected": "投诉"}
+{"text": "客服态度太差了，必须给个说法", "expected": "投诉"}
+{"text": "我要找你们领导投诉", "expected": "投诉"}
+{"text": "第二次发错货了，太过分了", "expected": "投诉"}
+{"text": "这什么服务，我要投诉到消协", "expected": "投诉"}
+{"text": "你好呀", "expected": "闲聊"}
+{"text": "谢谢，问题解决了", "expected": "闲聊"}
+{"text": "你是机器人吗", "expected": "闲聊"}
+{"text": "今天天气真不错", "expected": "闲聊"}
+{"text": "在吗", "expected": "闲聊"}
+{"text": "鞋子开胶了，能换一双新的吗", "expected": "售后"}
+{"text": "W40 和 W60 差在哪", "expected": "商品咨询"}
+{"text": "你们这个会员怎么办", "expected": "闲聊"}

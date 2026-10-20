@@ -214,3 +214,30 @@ body {
 
 /* 拒答:灰一点的答话,和正常答复区分开 */
 .bubble.abstained { background: #fafafa; border: 1px dashed #e5e6eb; color: #4e5969; }
+
+/* ---------------------------------------------------------------- CH05 工作流 */
+.flow-line {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  margin-bottom: 6px; font-size: 11px; color: #a3a9b3;
+}
+.flow-line .flow-node {
+  padding: 1px 6px; border-radius: 8px; background: #f7f8fa; border: 1px solid #eef0f3;
+}
+.flow-line .flow-node.hit { color: #3370ff; border-color: #c9d8ff; background: #f2f6ff; }
+.flow-line .flow-arrow { color: #d0d3d9; }
+.flow-line .flow-intent { color: #4e5969; background: #f2f3f5; border-color: #e5e6eb; }
+
+.actions { display: flex; gap: 8px; margin-top: 8px; }
+.action-btn {
+  padding: 5px 12px; border-radius: 14px; border: 1px solid #3370ff;
+  background: #fff; color: #3370ff; font-size: 13px; cursor: pointer;
+}
+.action-btn:hover:not(:disabled) { background: #f2f6ff; }
+.action-btn:disabled { cursor: default; opacity: .55; }
+.action-btn.done { border-color: #c9cdd4; color: #86909c; background: #f7f8fa; }
+
+.msg.system { align-self: center; max-width: 88%; }
+.msg.system .bubble {
+  background: #fff7e8; border: 1px solid #ffe0b2; color: #8a5300;
+  font-size: 12px; border-radius: 10px; text-align: center;
+}
