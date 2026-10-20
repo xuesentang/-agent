@@ -3,12 +3,14 @@
 query_order / query_product / query_logistics:真实场景该调公司电商/物流系统 API,
 演示起见工具内部按入参确定性随机生成(random.Random(seed=业务键)),不接真实接口、
 不建表——同入参两次调用结果逐字一致(可复现,Review Focus 6)。
-query_faq:SQL LIKE 查 faq 表(ch03 起换向量检索,契约不变)。
+query_faq:ch03 起内部换向量语义检索(Milvus Top-K),入参出参契约与 CH02 一致;
+向量库/嵌入故障时降级 CH02 的 LIKE 关键词查询,聊天不中断。
 create_ticket:写 tickets 表,conversation_id 经 ContextVar 注入(spec §4)。
 """
 
 from __future__ import annotations
 
+import logging
 import random
 from datetime import date, datetime, timedelta
 from functools import lru_cache
@@ -19,7 +21,10 @@ from langchain_core.tools import tool
 
 from app.core.tools.context import current_conversation_id
 from app.core.tools.registry import ToolRegistry
+from app.rag.retriever import Retriever, retrieve
 from app.repositories import faq_repo, ticket_repo
+
+logger = logging.getLogger("kefu_agent")
 
 # ---------------------------------------------------------------- mock 数据素材
 _ORDER_PRODUCTS = [
@@ -97,20 +102,40 @@ def query_logistics(order_id: str) -> str:
 
 
 # ---------------------------------------------------------------- DB 工具(工厂注入 session)
-def build_db_tools(session_factory) -> list[BaseTool]:
-    """query_faq / create_ticket:需要数据库会话,由工厂注入,不进工具 schema。"""
+def _format_qa_hits(pairs: list[tuple[str, str]]) -> str:
+    """问答命中列表的统一格式(与 CH02 逐字一致,向量/LIKE 两条路共用)。"""
+    lines = [f"找到 {len(pairs)} 条相关 FAQ:"]
+    lines += [f"{i}. 问:{q}\n   答:{a}" for i, (q, a) in enumerate(pairs, 1)]
+    return "\n".join(lines)
+
+
+def build_db_tools(session_factory, retriever: Retriever | None = None) -> list[BaseTool]:
+    """query_faq / create_ticket:需要数据库会话,由工厂注入,不进工具 schema。
+
+    retriever 可注入(单测替身);None 时用进程内真检索器(Milvus + BGE-M3)。
+    """
 
     @tool
     async def query_faq(keyword: str) -> str:
         """查询常见问题(退货政策、运费、发票等客服知识)。
         keyword: 问题关键词,如「退货」「运费」「发票」"""
+        try:
+            hits = await retrieve(
+                session_factory=session_factory, query=keyword, retriever=retriever
+            )
+        except Exception as exc:  # noqa: BLE001 - 向量库/嵌入故障降级 LIKE,不中断聊天
+            logger.warning("query_faq 向量检索失败,降级 LIKE 关键词查询:%s", exc)
+            hits = None
+        if hits is not None:
+            # 向量路:空结果是语义检索的诚实答案,不降级(降级只留给真故障)
+            if not hits:
+                return f"未在 FAQ 知识库中找到与「{keyword}」相关的内容。"
+            return _format_qa_hits([(h.chunk.questions, h.chunk.answer) for h in hits])
         async with session_factory() as session:
-            hits = await faq_repo.search_by_keyword(session, keyword)
-        if not hits:
+            faq_hits = await faq_repo.search_by_keyword(session, keyword)
+        if not faq_hits:
             return f"未在 FAQ 知识库中找到与「{keyword}」相关的内容。"
-        lines = [f"找到 {len(hits)} 条相关 FAQ:"]
-        lines += [f"{i}. 问:{h.question}\n   答:{h.answer}" for i, h in enumerate(hits, 1)]
-        return "\n".join(lines)
+        return _format_qa_hits([(h.question, h.answer) for h in faq_hits])
 
     @tool
     async def create_ticket(

@@ -11,16 +11,41 @@ from app.core.tools.business_tools import (
 )
 from app.core.tools.context import current_conversation_id
 from app.models.faq import Faq
+from app.models.knowledge_chunk import KnowledgeChunk
 from app.models.ticket import Ticket
-from app.repositories import conversation_repo
+from app.rag.embeddings import FakeEmbedder
+from app.rag.retriever import Retriever
+from app.rag.vectorstore import FakeMilvus, MilvusStore, VectorStoreError
+from app.repositories import conversation_repo, knowledge_repo
 
 
 def _call(name: str, args: dict, cid: str = "call_1") -> dict:
     return {"name": name, "args": args, "id": cid, "type": "tool_call"}
 
 
-async def _db_tools(session_factory) -> dict:
-    return {t.name: t for t in build_db_tools(session_factory)}
+async def _db_tools(session_factory, retriever: Retriever | None = None) -> dict:
+    return {t.name: t for t in build_db_tools(session_factory, retriever)}
+
+
+def _fake_retriever(chunks: list[KnowledgeChunk] | None = None) -> Retriever:
+    """FakeMilvus + FakeEmbedder 检索器;chunks 灌进去当知识库。"""
+    client = FakeMilvus()
+    store = MilvusStore(client=client)
+    embedder = FakeEmbedder()
+    if chunks:
+        store.upsert(
+            [
+                {"chunk_id": c.id, "embedding": embedder.embed_texts([c.embedding_text()])[0]}
+                for c in chunks
+            ]
+        )
+    return Retriever(store=store, embedder=embedder)
+
+
+async def _seed_chunk(session, answer: str, questions: str = "测试问题") -> KnowledgeChunk:
+    chunk = KnowledgeChunk(category="测试", questions=questions, answer=answer)
+    await knowledge_repo.add_chunks(session, [chunk])
+    return chunk
 
 
 # ---------------------------------------------------------------- mock 三工具
@@ -55,19 +80,64 @@ async def test_query_product_deterministic_and_shaped():
     assert out == (await query_product.ainvoke(_call("query_product", {"product_name": "跑鞋"}))).content
 
 
-# ---------------------------------------------------------------- query_faq
-async def test_query_faq_hit(session, session_factory):
+# ---------------------------------------------------------------- query_faq(ch03:向量优先,LIKE 兜底)
+async def test_query_faq_vector_hit(session, session_factory):
+    """向量路命中:输出格式与 CH02 逐字一致(找到 N 条 / 问:答:)。"""
+    chunk = await _seed_chunk(session, "签收后 7 天内可退,吊牌完好。", questions="退货政策是什么")
+    tools = await _db_tools(session_factory, _fake_retriever([chunk]))
+    out = (await tools["query_faq"].ainvoke(_call("query_faq", {"keyword": "退货"}))).content
+    assert "找到 1 条相关 FAQ:" in out
+    assert "问:退货政策是什么" in out
+    assert "答:签收后 7 天内可退,吊牌完好。" in out
+
+
+async def test_query_faq_vector_miss_wording(session_factory):
+    """向量路空结果:未找到文案(语义检索的诚实答案,不降级 LIKE)。"""
+    tools = await _db_tools(session_factory, _fake_retriever())
+    out = (await tools["query_faq"].ainvoke(_call("query_faq", {"keyword": "邮费"}))).content
+    assert "未在 FAQ 知识库中找到" in out
+
+
+async def test_query_faq_store_error_falls_back_to_like(session, session_factory):
+    """Milvus 故障 → 降级 CH02 的 LIKE,输出同款(徽章/回灌格式不变)。"""
     session.add(Faq(question="退货政策是什么", answer="签收后7天内可退", category="退换货"))
     await session.commit()
-    tools = await _db_tools(session_factory)
+
+    class BoomClient(FakeMilvus):
+        def search(self, *args, **kwargs):
+            raise VectorStoreError("milvus down")
+
+    retriever = Retriever(store=MilvusStore(client=BoomClient()), embedder=FakeEmbedder())
+    tools = await _db_tools(session_factory, retriever)
     out = (await tools["query_faq"].ainvoke(_call("query_faq", {"keyword": "退货"}))).content
-    assert "签收后7天内可退" in out
-    assert "找到 1 条" in out
+    assert "找到 1 条相关 FAQ:" in out
+    assert "答:签收后7天内可退" in out
 
 
-async def test_query_faq_miss_wording(session, session_factory):
-    # 「邮费」不在种子数据里——ch02 预期漏召回样例(ch03 升级钩子)。
-    tools = await _db_tools(session_factory)
+async def test_query_faq_embedder_error_falls_back_to_like(session, session_factory):
+    """嵌入故障同样降级 LIKE。"""
+    session.add(Faq(question="运费怎么算", answer="满 99 包邮", category="运费"))
+    await session.commit()
+
+    class BoomEmbedder:
+        def embed_texts(self, texts):
+            raise RuntimeError("model crashed")
+
+    retriever = Retriever(store=MilvusStore(client=FakeMilvus()), embedder=BoomEmbedder())
+    tools = await _db_tools(session_factory, retriever)
+    out = (await tools["query_faq"].ainvoke(_call("query_faq", {"keyword": "运费"}))).content
+    assert "答:满 99 包邮" in out
+
+
+async def test_query_faq_fallback_miss_wording(session_factory):
+    """降级路也没命中:同样的未找到文案。"""
+
+    class BoomClient(FakeMilvus):
+        def search(self, *args, **kwargs):
+            raise VectorStoreError("milvus down")
+
+    retriever = Retriever(store=MilvusStore(client=BoomClient()), embedder=FakeEmbedder())
+    tools = await _db_tools(session_factory, retriever)
     out = (await tools["query_faq"].ainvoke(_call("query_faq", {"keyword": "邮费"}))).content
     assert "未在 FAQ 知识库中找到" in out
 

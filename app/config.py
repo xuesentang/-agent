@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     db_echo: bool = False
     # CH02: tool execution timeout (registry executor).
     tool_timeout_seconds: float = 10.0
+    # CH03: RAG — 向量库连接与嵌入模型。
+    # 注意:不能叫 milvus_uri(env MILVUS_URI)——pymilvus 自己会读 .env 里这个名字,
+    # import 时就按 http(s):// 形式解析,相对路径直接抛 ConnectionConfigException。
+    vector_store_uri: str = "./data/milvus_lite.db"
+    embedding_model: str = "BAAI/bge-m3"
+    # CH03: 对话挖知识定时任务(默认关;开了 lifespan 起后台循环,按 interval 跑一轮)
+    mine_qa_enabled: bool = False
+    mine_qa_interval_hours: int = 24
+    mine_qa_batch_size: int = 20
 
 
 @lru_cache

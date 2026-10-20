@@ -19,5 +19,11 @@ services:
       retries: 20
     restart: unless-stopped
 
+# CH03 RAG 向量库形态说明：开发默认用 Milvus Lite（pip 嵌入式，文件库，见
+# dev-notes/ch03.md 部署形态决策），不需要 Docker 起 Milvus 服务端。
+# 若要切 Milvus standalone（etcd + minio + milvus 三容器，19530 端口），
+# 需自备 S3 兼容对象存储镜像——minio 官方镜像已从 Docker Hub 下架、
+# quay.io/minio/minio 需登录，本机拉不到，故未纳入默认 compose。
+
 volumes:
   mysql-data:

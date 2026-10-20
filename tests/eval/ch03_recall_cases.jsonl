@@ -1,0 +1,14 @@
+{"query": "邮费是多少", "expect_section": "退货退款政策 > 运费规则", "expect_keyword": "包邮", "note": "ch02 LIKE 漏召回样例,ch03 向量检索应命中"}
+{"query": "买东西还要额外付邮费吗", "expect_section": "退货退款政策 > 运费规则", "expect_keyword": "包邮", "note": "换说法:额外付邮费"}
+{"query": "质保期是多久", "expect_section": "商品常见问题 > 保修与质保", "expect_keyword": "保修", "note": "同义改写:质保→保修"}
+{"query": "鞋子穿两天开胶了能换吗", "expect_section": "退货退款政策 > 换货规则", "expect_keyword": "换货", "note": "换说法:能换吗→换货规则"}
+{"query": "公司采购能开发票吗", "expect_section": "商品常见问题 > 发票", "expect_keyword": "发票", "note": "开发票→发票"}
+{"query": "退货之后钱多久到账", "expect_section": "退货退款政策 > 退款时效", "expect_keyword": "退款", "note": "到账→退款时效"}
+{"query": "无理由退货对商品有什么要求", "expect_section": "七日无理由退货", "expect_keyword": "吊牌", "note": "子章节:商品完好标准"}
+{"query": "什么时候补货", "expect_section": "商品常见问题 > 库存与补货", "expect_keyword": "补货", "note": "补货→库存与补货"}
+{"query": "投诉的话你们多久处理完", "expect_section": "售后处理手册 > 投诉处理规范", "expect_keyword": "小时", "note": "投诉时效"}
+{"query": "退货的寄回运费谁承担", "expect_section": "退货退款政策 > 运费规则", "expect_keyword": "承担", "note": "谁承担→运费规则"}
+{"query": "跑鞋偏码吗", "expect_section": "商品常见问题 > 尺码与版型", "expect_keyword": "尺码", "note": "口语原句"}
+{"query": "维修需要付钱吗", "expect_section": "售后处理手册 > 维修流程", "expect_keyword": "报价", "note": "维修费用→维修流程"}
+{"query": "价保怎么申请", "expect_section": "退货退款政策 > 价保与补偿", "expect_keyword": "差价", "note": "价保→价保与补偿"}
+{"query": "啥情况不给退", "expect_section": "七日无理由退货", "expect_keyword": "禁止", "note": "子章节:不支持退货的情形,口语问法"}

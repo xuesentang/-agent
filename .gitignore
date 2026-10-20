@@ -5,3 +5,9 @@ __pycache__/
 .venv/
 .superpowers/
 .workbuddy/
+
+# CH03 RAG 本地资产(大文件/运行时数据,不进 git;锚定根目录,勿误伤 app/models/)
+# /models/  BGE-M3 权重 ~2.2G,curl 自 HF 镜像下载,见 README
+# /data/    Milvus Lite 文件库与知识文档生成物,运行时生成
+/models/
+/data/

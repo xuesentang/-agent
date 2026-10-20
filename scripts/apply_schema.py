@@ -1,8 +1,8 @@
 """Apply DDL scripts to MySQL(scripts/sql/*.sql)。
 
 用法(需先 docker compose up -d 起好 MySQL):
-    python scripts/apply_schema.py                    # 默认 DATABASE_URL + scripts/sql/ch02_schema.sql
-    python scripts/apply_schema.py --sql <path>       # 指定 SQL 文件
+    python scripts/apply_schema.py                    # 默认按文件名序执行全部 schema(ch02 → ch03 → …)
+    python scripts/apply_schema.py --sql <path>       # 只执行指定 SQL 文件
 
 注意:按分号切分执行,适用于本仓库纯 DDL 脚本(无存储过程/触发器);
 后续章节若引入含分号字符串或例程的脚本,需换成逐语句解析。
@@ -21,6 +21,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
+
+SCHEMA_DIR = Path(__file__).resolve().parent / "sql"
+
+
+def default_schema_files() -> list[Path]:
+    """按文件名序(章节序)返回全部 schema 脚本;增量章节追加新文件即可。"""
+    return sorted(SCHEMA_DIR.glob("*.sql"))
 
 
 def split_statements(sql: str) -> list[str]:
@@ -57,15 +64,23 @@ async def apply(database_url: str, sql_path: str, if_not_exists: bool = False) -
 def main() -> None:
     parser = argparse.ArgumentParser(description="Apply DDL to MySQL")
     parser.add_argument("--database-url", default=get_settings().database_url)
-    parser.add_argument("--sql", default="scripts/sql/ch02_schema.sql")
+    parser.add_argument(
+        "--sql",
+        default=None,
+        help="只执行指定 SQL 文件;默认按文件名序执行 scripts/sql/*.sql 全部",
+    )
     parser.add_argument(
         "--if-not-exists",
         action="store_true",
         help="幂等重跑:CREATE TABLE 转为 CREATE TABLE IF NOT EXISTS",
     )
     args = parser.parse_args()
-    count = asyncio.run(apply(args.database_url, args.sql, args.if_not_exists))
-    print(f"applied {count} statements from {args.sql} to {args.database_url}")
+    files = [Path(args.sql)] if args.sql else default_schema_files()
+    total = 0
+    for f in files:
+        total += asyncio.run(apply(args.database_url, str(f), args.if_not_exists))
+        print(f"applied {f}")
+    print(f"total {total} statements across {len(files)} file(s)")
 
 
 if __name__ == "__main__":
