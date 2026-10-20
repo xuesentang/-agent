@@ -1,12 +1,14 @@
 # 电商智能客服系统
 
-电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库（向量语义检索）+ CH04 混合检索与重排（含引用溯源、拒答、评估体系）。FastAPI + SQLAlchemy(Async) + LangChain，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
+电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
 
 ## 功能
 
 | 接口 | 说明 |
 |---|---|
-| `POST /api/v1/chat/stream` | 多轮对话，SSE 流式逐 token 推送。CH02 起挂 Function Calling：模型自选工具 → 执行 → 回灌收敛，工具执行段推 `tool_start`/`tool_end` 状态帧，全量聊天记录（含工具轨迹）落 MySQL |
+| `POST /api/v1/chat/stream` | 多轮对话，SSE 流式。CH05 起走 LangGraph：意图识别 → 四路分流 →（知识类）检索 + 置信度闸 → 主力 Agent（ReAct，可多步调工具）。事件含 `node`（节点进出）、`intent`、`gate`、`tool_start`/`tool_end`、`citations`、`done`（带 `actions`） |
+| `POST /api/v1/chat/actions/transfer` | 转人工（前端模拟）：返回「已转接人工客服」+ 客服小猫问候，只留痕不建单 |
+| `POST /api/v1/chat/actions/create-ticket` | 建工单：走 CH02 的 `create_ticket` 工具写 `tickets` 表，与转人工互不绑定 |
 | `POST /api/v1/chat/extract` | 售后描述结构化抽取：`order_id` / `claim_type`（八枚举）/ `expected_solution`，未提及为 `null` |
 | `GET /` | 聊天页（原生 HTML/JS）：消息流、流式渲染、工具轨迹徽章、可点引用角标（点开看来源章节与原文）、每条回答的 👍/👎 反馈 |
 
@@ -19,6 +21,15 @@
 - **引用溯源**：证据在 prompt 里带 `[n]` 编号，编号与下发给前端的 citation 列表严格同源；答案里的角标点开即显示来源章节路径与原文。
 - **拒答与低置信度池**：检索零命中、或生成前证据自评判「不够答」→ 明确拒答，并把原话落进 `low_confidence_questions`（来源/原因/会话）。闸门在生成之前——答复是流式的，吐出去再判就只剩事后道歉。
 - **评估体系**：357 块（82538 字 / 15 篇）知识库，Top-10 只占 2.8%——这个数字决定了指标有没有意义。76 条用例 = 45 干净 + 31 噪声变体，四桶（政策直问 / 点名型号 / 只许黑话 / 一句问两件事）+ D 桶负例 14 条（far 6 / near 8，逐条核过「库里确实没有」）。**出题与标注分离**：模型只看目录出题，`expected_section` 与要点按事实骨架回填，人为改标全部记在 `scripts/assemble_eval_set.py` 的两张显式表里。检索段出 R@5/@10/MRR 四策略对比（算术平均 + 加权平均两套口径），生成段用 LLM 裁 Faithfulness 与相关要点覆盖，判编造的写进 `faith_cases` 台账。
+
+**工作流编排**（CH05，`app/agent/`）：
+
+- **图骨架**：指代消解 → 意图识别 → 按意图分流 →（知识类）知识检索 → 置信度闸 → 主力 Agent → 日志记录。能确定的事写在图里，只有不确定的（判意图、选工具、组织语言）交给模型。
+- **七类意图 → 四个出口**：物流/订单/售后 → 业务数据类（不预检索，直进 Agent）；商品咨询/退款退货 → 知识类（强制检索 → 过闸 → Agent）；投诉 → 不进 Agent，安抚话术 + 「转人工」「建工单」两个选项；闲聊 → 固定话术、零模型调用。分流表在 `app/agent/intent.py`，改规矩改表不改 prompt。
+- **置信度闸**（`app/agent/gate.py`）：卡在检索之后、进 Agent 之前——答复是流式的，说完再判只剩道歉。两层：top1 相似度 `< KB_MIN_SCORE`（0.45）直接判弱；过了阈值才花一次调用做证据自评。自评异常按「不够」处理（CH04 时是 fail-open，有了转人工出口后改 fail-closed）。
+- **主力 Agent**（`app/agent/react.py`）：手写 ReAct 循环，三个停止条件（不再要工具 / 步数上限 `AGENT_MAX_STEPS=4` / token 预算 `AGENT_TOKEN_BUDGET=6000`）。缺订单号这类必填信息时由工具的参数校验回灌错误，模型据此追问。
+- **祛魅对照**：`app/agent/naive_loop.py` 是同一件事去掉框架的写法（一个 while + 三个出口），`python -m app.agent.naive_loop "订单 1001 的物流到哪了"` 可以直接看它怎么转。
+- **会话状态**：LangGraph State 贯穿全图，checkpointer 按 `thread_id = conversation_id` 存图状态；对话历史仍以 MySQL `messages` 表为权威源，每轮读出、裁剪、注入 State。
 
 **五个工具**（`app/core/tools/business_tools.py`）：`query_order` / `query_product` / `query_logistics`（工具内 mock 随机生成，同入参结果确定）、`query_faq`（CH03 起内部为向量语义检索：BGE-M3 嵌入 → Milvus Top-5 → 回 MySQL 取原文；向量库故障时降级 SQL LIKE 兜底）、`create_ticket`（写 tickets 表）。工具基础设施：注册管理、参数 Schema 校验、错误分诊（参数不合法 / 查询落空 / 真故障）、超时控制、暂时性故障重试框架。
 
@@ -88,6 +99,48 @@ python scripts/build_knowledge.py --batch-size 8
 # 期望: 第一次 interrupted(剩 pending)，第二次 done 且 vectorized 补齐剩余
 ```
 
+## 验收命令（CH05 五条标准）
+
+```bash
+# 起服务（本机开发库 + Milvus Lite 开发库，避开 .env 里的 MySQL 配置）
+DATABASE_URL="sqlite+aiosqlite:///./data/devstack.db" \
+VECTOR_STORE_URI="./data/devstack_milvus.db" \
+python -m uvicorn app.main:app --port 8010
+
+# ① 政策类问题：强制检索节点被走到
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" -d '{"session_id":"ch05-a","message":"邮费是多少"}'
+# 期望: event: intent(route=knowledge) → node(retrieve_knowledge) → node(confidence_gate)
+#       → gate(passed=true) → node(agent) → token… → citations → done
+# 日志: grep "agent.trace" 能看到 intent/route/gate_passed/top_score
+
+# ② 「订单 1001 的物流到哪了」：Agent 自己调工具
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" -d '{"session_id":"ch05-b","message":"订单 1001 的物流到哪了"}'
+# 期望: route=business（不预检索）→ tool_start(query_order) → tool_start(query_logistics)
+
+# ③ 我要投诉：两个独立按钮，分别点、互不绑定
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" -d '{"session_id":"ch05-c","message":"我要投诉"}'
+# 期望: done 事件 actions=[transfer_human, create_ticket]
+curl -s --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/actions/transfer \
+  -H "Content-Type: application/json" -d '{"conversation_id":<上一步的 id>}'
+curl -s --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/actions/create-ticket \
+  -H "Content-Type: application/json" -d '{"conversation_id":<同上>}'
+# 期望: 转人工只回问候、不建单；建工单回 ticket_no，tickets 表新增一行
+
+# ④ 闲聊：固定话术
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" -d '{"session_id":"ch05-d","message":"你好呀"}'
+# 期望: route=chitchat, finish_reason=chitchat, 无 tool_start、无 citations
+
+# ⑤ 多步 ReAct
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"ch05-e","message":"我订单 1001 现在什么状态，帮我确认下这单的物流走到了哪一步"}'
+# 期望: 两次 tool_start（query_order → query_logistics）
+```
+
 ## 验收命令（CH04 四条标准）
 
 ```bash
@@ -117,11 +170,12 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 244 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 306 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
 python -m tests.eval.run_rag_eval           # CH04 四策略检索 + Faithfulness + 拒答（需真模型+真库）
+python -m tests.eval.run_intent_eval        # CH05 意图识别，38 条标注样例（需真实 key）
 ```
 
 CH04 的评估集是**生成出来的**，脚本按顺序跑（`--reset-store` 重建前会先把 MySQL 的 `vectorize_status` 退回 pending，否则旧向量状态会让块被永久跳过）：
@@ -171,13 +225,17 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | 嵌入模型（本地目录或 HF 名） |
 | `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排模型（本地目录或 HF 名，~2.3G） |
 | `EVIDENCE_SELFCHECK_ENABLED` | `true` | 生成前的证据自评闸；关掉则只按「零命中」拒答 |
+| `KB_MIN_SCORE` | `0.45` | 知识类置信度闸的分数粗筛线（dense 相似度；实测库内外重叠，只能挡明显离题的） |
+| `AGENT_MAX_STEPS` | `4` | 主力 Agent 单轮 ReAct 的步数上限 |
+| `AGENT_TOKEN_BUDGET` | `6000` | 主力 Agent 单轮 token 预算，见底即停并交出已查到的结果 |
+| `LOG_LEVEL` | `INFO` | 日志级别；`agent.trace` 一行一轮，验收靠它 |
 | `MINE_QA_ENABLED` | `false` | 对话挖知识定时任务开关 |
 | `MINE_QA_INTERVAL_HOURS` | `24` | 挖知识定时间隔 |
 | `MINE_QA_BATCH_SIZE` | `20` | 每批挖掘的会话数 |
 
 ## 已知限制
 
-1. 只做**单轮**工具调用：模型一次定工具（可并行多个）→ 执行 → 回灌收敛；多轮自动循环的 Agent Loop 是 CH05。
+1. ~~只做单轮工具调用~~ CH05 起主力 Agent 是多步 ReAct（上限由 `AGENT_MAX_STEPS` 控），仍不做跨会话记忆与上下文压缩（CH07）。
 2. CH04 起默认走 **hybrid_rerank**；dense 与 BM25 的分数不同量纲、RRF 分只反映名次，跨策略只能比 Recall/MRR，不能比分值。LIKE 降级路仍保留为向量库故障时的兜底。
 3. 向量库存 Milvus Lite 文件库（单机嵌入式，无 Docker 依赖）：索引定死 FLAT 暴力精确检索——一是演示量级（几百块）暴力扫更准，二是 milvus-lite 的 AUTOINDEX 走 faiss，其 Windows 窄字符文件 API 写不了中文路径，跨进程重开必崩（实踩，见 dev-notes/ch03.md）；集合存主键+向量+text(供 BM25 建索引)+category(供过滤)，原文正文一律回 MySQL 取。
 4. 挖知识的 QA 去重只做规范化精确/包含比对，语义去重仍待补；挖出的 QA 用固定分类标签「对话挖掘」，类目归并入 CH09 飞轮。
@@ -188,6 +246,9 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 9. BM25 中文分词用 Milvus 内置 **jieba**（服务端的 `chinese`/lindera 分词器未编进 milvus-lite）；换 Milvus 服务端后建议改回 `chinese`，代码里只改 `ANALYZER` 一处。
 10. SSE `data` 为 JSON，中文走 `\u` 转义（前端解析无影响；CH08 工具结果序列化时统一处理中文不转义）。
 11. 拒答闸以「知识库」为口径：同一轮里既查单/查物流又查知识库时，只要 `query_faq` 零命中就整轮拒答（连同轮的工具结果一起不答），保守取向——宁可少答一次也不让模型凭常识补政策。反方向放行会让「政策类问题」失去唯一的硬约束。
-12. 证据自评失败按「证据够」放行（fail-open），与范本的 fail-closed 相反：CH04 尚无转人工出口，自评抖动时全员拒答等于服务停摆；CH05 接上转人工/建工单后改为 fail-closed。
+12. ~~证据自评失败按「证据够」放行~~ CH05 起改为 **fail-closed**（判不了就当不够，走兜底 + 两个出口）：有转人工之后，多拒一次的代价只剩用户多点一下。`degraded` 标记仍保留，入池原因能分辨「判了弱」和「没判成」。
+13. 图状态的 checkpointer 是 `InMemorySaver`（框架自带、零依赖）：进程重启后图中间态清空，但对话历史在 MySQL 里，用户接着聊无感。要跨进程持久化需要 `langgraph-checkpoint-sqlite`，未装（不为一个功能动运行环境）。
+14. 意图识别只有七类、没有「其他」兜底，解析失败一律归「售后」（业务数据类，直进 Agent）——失败代价最小的方向。置信度字段目前只记录不参与路由，CH06 做降级路时才用。
+15. 「转人工」是纯前端模拟：后端只落一条消息留痕，没有真人系统、没有会话状态机。
 
 设计文档：`docs/superpowers/specs/`（ch01/ch02/ch03/ch04 各一份）；实施计划：`docs/superpowers/plans/`；开发留痕：`dev-notes/ch01.md` ~ `dev-notes/ch04.md`。
