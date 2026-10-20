@@ -11,3 +11,7 @@ __pycache__/
 # /data/    Milvus Lite 文件库与知识文档生成物,运行时生成
 /models/
 /data/
+
+# 本地协作文档,不进仓库
+AGENTS.md
+能力差异.md
