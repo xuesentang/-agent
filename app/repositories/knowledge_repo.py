@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.knowledge_chunk import KnowledgeChunk
@@ -51,6 +51,23 @@ async def mark_done(session: AsyncSession, chunk_id: int, vector_id: str) -> Non
     chunk.vector_id = vector_id
     chunk.vectorize_status = "done"
     await session.commit()
+
+
+async def reset_vector_status(session: AsyncSession) -> int:
+    """把全部块退回 pending(配合「删掉向量集合重建」使用)。
+
+    为什么必须有这一步:向量集合被 drop 之后,MySQL 里的 vector_id 还写着旧值、
+    状态还是 done,于是重跑时这些块永远不会被重新向量化——库里明明有 357 行,
+    Milvus 只有 336 条,检索时那 21 块等于不存在。这个缺陷只有在「重建集合」
+    这条路径上才会暴露,平时的增量补跑完全正常。
+    """
+    result = await session.execute(
+        update(KnowledgeChunk)
+        .where(KnowledgeChunk.vectorize_status != "pending")
+        .values(vectorize_status="pending", vector_id=None)
+    )
+    await session.commit()
+    return int(result.rowcount or 0)
 
 
 async def get_by_ids(session: AsyncSession, ids: list[int]) -> list[KnowledgeChunk]:

@@ -1,0 +1,26 @@
+{"id": "A01", "query": "退货的运费谁承担", "bucket": "A_policy", "difficulty": "easy", "expected_section": "运费规则", "expected_keywords": ["包邮", "8 元"], "answerable": true}
+{"id": "A02", "query": "退款多久能到账", "bucket": "A_policy", "difficulty": "easy", "expected_section": "退款时效", "expected_keywords": ["工作日", "到账"], "answerable": true}
+{"id": "A03", "query": "七天无理由退货要满足什么条件", "bucket": "A_policy", "difficulty": "medium", "expected_section": "商品完好标准", "expected_keywords": ["吊牌", "附件"], "answerable": true}
+{"id": "A04", "query": "哪些情形不支持无理由退货", "bucket": "A_policy", "difficulty": "medium", "expected_section": "不支持退货的情形", "expected_keywords": ["塑封", "吊牌"], "answerable": true}
+{"id": "A05", "query": "质量问题退货的申请期限是多久", "bucket": "A_policy", "difficulty": "medium", "expected_section": "质量问题退货", "expected_keywords": ["15 日"], "answerable": true}
+{"id": "A06", "query": "价保期内降价怎么补差价", "bucket": "A_policy", "difficulty": "hard", "expected_section": "价保与补偿", "expected_keywords": ["价保", "截图"], "answerable": true}
+{"id": "B01", "query": "宽楦版本怎么筛选", "bucket": "B_model", "difficulty": "easy", "expected_section": "尺码与版型", "expected_keywords": ["宽楦"], "answerable": true}
+{"id": "B02", "query": "鞋子断底算质量问题吗", "bucket": "B_model", "difficulty": "medium", "expected_section": "质量问题退货", "expected_keywords": ["断底"], "answerable": true}
+{"id": "B03", "query": "开线能不能走保修", "bucket": "B_model", "difficulty": "medium", "expected_section": "保修与质保", "expected_keywords": ["开线", "保修"], "answerable": true}
+{"id": "B04", "query": "开增值税专用发票要提供税号吗", "bucket": "B_model", "difficulty": "easy", "expected_section": "发票", "expected_keywords": ["税号"], "answerable": true}
+{"id": "B05", "query": "到货提醒在哪里设置", "bucket": "B_model", "difficulty": "medium", "expected_section": "库存与补货", "expected_keywords": ["到货提醒"], "answerable": true}
+{"id": "B06", "query": "怎么查防伪", "bucket": "B_model", "difficulty": "easy", "expected_section": "正品与售后入口", "expected_keywords": ["防伪"], "answerable": true}
+{"id": "C01", "query": "邮费是多少", "bucket": "C_colloquial", "difficulty": "easy", "expected_section": "运费规则", "expected_keywords": ["包邮"], "answerable": true}
+{"id": "C02", "query": "我买的鞋穿了三天不合脚还能退么", "bucket": "C_colloquial", "difficulty": "hard", "expected_section": "七日无理由退货", "expected_keywords": ["吊牌", "7 日"], "answerable": true}
+{"id": "C03", "query": "东西坏了寄回去谁出邮费", "bucket": "C_colloquial", "difficulty": "hard", "expected_section": "质量问题退货", "expected_keywords": ["本店承担"], "answerable": true}
+{"id": "C04", "query": "钱什么时候能退回来啊", "bucket": "C_colloquial", "difficulty": "hard", "expected_section": "退款时效", "expected_keywords": ["工作日", "到账"], "answerable": true}
+{"id": "C05", "query": "换个大一码要自己付快递费吗", "bucket": "C_colloquial", "difficulty": "hard", "expected_section": "换货规则", "expected_keywords": ["运费"], "answerable": true}
+{"id": "C06", "query": "发票开得也太慢了吧", "bucket": "C_colloquial", "difficulty": "hard", "expected_section": "发票", "expected_keywords": ["48 小时"], "answerable": true}
+{"id": "E01", "query": "退货运费谁出,另外能开发票吗", "bucket": "E_multi", "difficulty": "hard", "expected_section": "运费规则", "expected_keywords": ["包邮"], "answerable": true}
+{"id": "E02", "query": "换货几天能发出,运费谁承担", "bucket": "E_multi", "difficulty": "hard", "expected_section": "换货规则", "expected_keywords": ["3 个工作日"], "answerable": true}
+{"id": "E03", "query": "订单拆开发货包邮门槛怎么算", "bucket": "E_multi", "difficulty": "medium", "expected_section": "运费规则", "expected_keywords": ["分别计算"], "answerable": true}
+{"id": "E04", "query": "大促期间退款会延迟吗", "bucket": "E_multi", "difficulty": "medium", "expected_section": "退款时效", "expected_keywords": ["顺延"], "answerable": true}
+{"id": "E05", "query": "品牌方检测确认是质量问题的话退款怎么算", "bucket": "E_multi", "difficulty": "hard", "expected_section": "质量问题退货", "expected_keywords": ["全额退款"], "answerable": true}
+{"id": "E06", "query": "物流把东西弄破了要自己出钱吗", "bucket": "E_multi", "difficulty": "hard", "expected_section": "价保与补偿", "expected_keywords": ["全额补发"], "answerable": true}
+{"id": "U01", "query": "你们支持货到付款吗", "bucket": "U_unanswerable", "difficulty": "easy", "expected_section": null, "expected_keywords": [], "answerable": false}
+{"id": "U02", "query": "会员积分可以兑换什么礼品", "bucket": "U_unanswerable", "difficulty": "medium", "expected_section": null, "expected_keywords": [], "answerable": false}

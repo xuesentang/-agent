@@ -39,6 +39,28 @@ async def test_get_pending_respects_limit(session):
     assert len(await knowledge_repo.get_pending(session, limit=2)) == 2
 
 
+async def test_reset_vector_status_brings_done_chunks_back_to_pending(session):
+    """删掉向量集合后如果不把状态退回 pending,这些块会被永久跳过。
+
+    实踩:357 行的库重建集合后 Milvus 只有 336 条,少的 21 块不报错、也不在检索里。
+    """
+    a, b = await knowledge_repo.add_chunks(session, [make_chunk(), make_chunk()])
+    await knowledge_repo.mark_done(session, a.id, "1")
+
+    changed = await knowledge_repo.reset_vector_status(session)
+
+    assert changed == 1
+    pending = await knowledge_repo.get_pending(session)
+    assert {c.id for c in pending} == {a.id, b.id}
+    assert all(c.vector_id is None for c in pending)
+
+
+async def test_reset_vector_status_keeps_pending_chunks_untouched(session):
+    (a,) = await knowledge_repo.add_chunks(session, [make_chunk()])
+    assert await knowledge_repo.reset_vector_status(session) == 0
+    assert [c.id for c in await knowledge_repo.get_pending(session)] == [a.id]
+
+
 async def test_mark_done_backfills_vector_id_and_status(session):
     (chunk,) = await knowledge_repo.add_chunks(session, [make_chunk()])
     await knowledge_repo.mark_done(session, chunk.id, "42")

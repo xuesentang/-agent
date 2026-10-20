@@ -93,12 +93,16 @@ async def retrieve(
         return await _hydrate(session_factory, raw)
 
     if strategy == "hybrid":
-        raw = retriever.store.hybrid_search(vector, rewritten.bm25_query, top_k, expr=expr)
+        raw = retriever.store.hybrid_search(
+            vector, rewritten.bm25_query, top_k, expr=expr, route_limit=_route_limit()
+        )
         return await _hydrate(session_factory, raw)
 
     # hybrid_rerank:粗排多取一些,精排后再截断
     pool = max(top_k, RERANK_POOL)
-    raw = retriever.store.hybrid_search(vector, rewritten.bm25_query, pool, expr=expr)
+    raw = retriever.store.hybrid_search(
+        vector, rewritten.bm25_query, pool, expr=expr, route_limit=_route_limit()
+    )
     hits = await _hydrate(session_factory, raw)
     if not hits or retriever.reranker is None:
         return hits[:top_k]
@@ -106,6 +110,13 @@ async def retrieve(
     reranked = [Hit(chunk=h.chunk, score=float(s)) for h, s in zip(hits, scores)]
     reranked.sort(key=lambda h: h.score, reverse=True)
     return reranked[:top_k]
+
+
+def _route_limit() -> int:
+    """两路各召回多少条进 RRF。按库规模配(recall_route_limit),不写死。"""
+    from app.config import get_settings
+
+    return max(1, get_settings().recall_route_limit)
 
 
 async def _rewrite(query: str, *, rewrite: bool, model):

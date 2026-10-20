@@ -3,12 +3,20 @@ from app.config import Settings
 
 def test_settings_defaults():
     settings = Settings(_env_file=None)
-    assert settings.llm_base_url == "https://open.bigmodel.cn/api/paas/v4/"
-    assert settings.llm_model == "glm-5.3-flash"
+    assert settings.llm_base_url == "https://api.deepseek.com/v1"
+    assert settings.llm_model == "deepseek-flash"
     assert settings.llm_api_key == ""
     assert settings.llm_temperature == 0.7
     assert settings.llm_max_tokens == 512
     assert settings.history_token_budget == 2048
+
+
+def test_settings_thinking_defaults_to_disabled():
+    """思考模式必须默认关:开着的时候长输出 9398 token / 36 秒,关了 764 token / 6 秒。"""
+    settings = Settings(_env_file=None)
+    assert settings.llm_thinking == "disabled"
+    assert settings.recall_route_limit == 20
+    assert settings.judge_model == ""
 
 
 def test_settings_reads_env(monkeypatch):

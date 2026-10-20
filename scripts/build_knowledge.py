@@ -61,6 +61,14 @@ def main() -> None:
 
     async def run():
         try:
+            if args.reset_store:
+                # 集合已经 drop,MySQL 里的 vector_id 必须一起作废,否则这些块
+                # 会被当成「已向量化」永远跳过(Milvus 少一截,而且不报错)。
+                from app.repositories import knowledge_repo
+
+                async with session_factory() as session:
+                    n = await knowledge_repo.reset_vector_status(session)
+                print(f"reset: {n} 块退回 pending(与已删的向量集合对齐)")
             return await build_index(
                 session_factory=session_factory,
                 store=store,
