@@ -19,12 +19,16 @@ from typing import Literal
 from langchain_core.tools import BaseTool
 from langchain_core.tools import tool
 
-from app.core.tools.context import current_conversation_id
+from app.core.tools.context import current_citations, current_conversation_id
 from app.core.tools.registry import ToolRegistry
+from app.rag.citations import build_citations, format_evidence
 from app.rag.retriever import Retriever, retrieve
 from app.repositories import faq_repo, ticket_repo
 
 logger = logging.getLogger("kefu_agent")
+
+# 生成阶段喂给模型的证据条数(ch04:混合检索 Top-50 → 重排 Top-10)
+FAQ_TOP_K = 10
 
 # ---------------------------------------------------------------- mock 数据素材
 _ORDER_PRODUCTS = [
@@ -109,28 +113,48 @@ def _format_qa_hits(pairs: list[tuple[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def build_db_tools(session_factory, retriever: Retriever | None = None) -> list[BaseTool]:
+def build_db_tools(
+    session_factory, retriever: Retriever | None = None, *, rewrite: bool = True
+) -> list[BaseTool]:
     """query_faq / create_ticket:需要数据库会话,由工厂注入,不进工具 schema。
 
-    retriever 可注入(单测替身);None 时用进程内真检索器(Milvus + BGE-M3)。
+    retriever 可注入(单测替身);None 时用进程内真检索器(Milvus + BGE-M3 + 重排)。
+    rewrite=False 关掉 LLM 问法改写(只留同义词扩展),单测用——不必为一句改写连外网。
     """
 
     @tool
     async def query_faq(keyword: str) -> str:
         """查询常见问题(退货政策、运费、发票等客服知识)。
-        keyword: 问题关键词,如「退货」「运费」「发票」"""
+        keyword: 用用户的原话来问,如「邮费怎么算」「退货要几天」"""
         try:
             hits = await retrieve(
-                session_factory=session_factory, query=keyword, retriever=retriever
+                session_factory=session_factory,
+                query=keyword,
+                top_k=FAQ_TOP_K,
+                retriever=retriever,
+                rewrite=rewrite,
             )
         except Exception as exc:  # noqa: BLE001 - 向量库/嵌入故障降级 LIKE,不中断聊天
-            logger.warning("query_faq 向量检索失败,降级 LIKE 关键词查询:%s", exc)
+            logger.warning("query_faq 检索失败,降级 LIKE 关键词查询:%s", exc)
             hits = None
         if hits is not None:
-            # 向量路:空结果是语义检索的诚实答案,不降级(降级只留给真故障)
+            # 空结果是语义检索的诚实答案,不降级(降级只留给真故障)
+            bucket = current_citations.get()
             if not hits:
+                if bucket is not None:
+                    bucket.fill([])  # 走了知识库但零命中 → 上层拒答
                 return f"未在 FAQ 知识库中找到与「{keyword}」相关的内容。"
-            return _format_qa_hits([(h.chunk.questions, h.chunk.answer) for h in hits])
+            citations = build_citations(hits)
+            # 引用走旁路(服务层随 SSE 下发),工具返回值只给模型读的编号文本
+            if bucket is not None:
+                bucket.fill(citations)
+            return (
+                f"知识库命中 {len(citations)} 条,回答时请在句子末尾标注来源编号,如 [1]:\n"
+                + format_evidence(citations)
+            )
+        bucket = current_citations.get()
+        if bucket is not None:
+            bucket.fill([])
         async with session_factory() as session:
             faq_hits = await faq_repo.search_by_keyword(session, keyword)
         if not faq_hits:

@@ -13,7 +13,7 @@
         <span class="avatar">🤖</span>
         <div>
           <div class="title">小智 · 电商智能客服</div>
-          <div class="subtitle">CH02 · Function Calling 工具链演示</div>
+          <div class="subtitle">CH04 · 混合检索 + 重排 + 引用溯源</div>
         </div>
       </div>
       <button id="new-chat" title="开一轮新会话">新会话</button>
@@ -22,10 +22,18 @@
     <main id="messages" aria-live="polite"></main>
 
     <footer id="composer">
-      <input id="input" type="text" placeholder="问点什么吧，如：订单1001的物流到哪了" autocomplete="off" />
+      <input id="input" type="text" placeholder="问点什么吧，如：邮费是多少 / 订单1001的物流到哪了" autocomplete="off" />
       <button id="send">发送</button>
     </footer>
   </div>
+
+  <aside id="source-panel" aria-label="来源原文">
+    <div class="source-head">
+      <span>来源原文</span>
+      <button id="source-close" type="button" title="关闭">✕</button>
+    </div>
+    <div id="source-body"></div>
+  </aside>
   <script src="/chat.js"></script>
 </body>
 </html>

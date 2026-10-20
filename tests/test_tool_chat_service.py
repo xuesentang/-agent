@@ -289,3 +289,122 @@ async def test_persist_failure_emits_db_error(session):
         events = await _events(model, session)
     assert events[-1].event == "error"
     assert events[-1].data["code"] == "DB_ERROR"
+
+
+# ---------------------------------------------------------------- ch04 质量闸与引用
+
+
+class FakeCheckModel:
+    """证据自评替身:按预置 JSON 回复。"""
+
+    def __init__(self, payload: str):
+        self.payload = payload
+        self.calls = 0
+
+    async def ainvoke(self, messages, **kwargs):
+        self.calls += 1
+        return AIMessage(content=self.payload)
+
+
+def _cited_tool(hits: bool = True):
+    """装成 query_faq:把引用写进旁路 ContextVar,返回值给模型读的编号文本。"""
+    from app.core.tools.context import current_citations
+    from app.rag.citations import Citation
+
+    @tool
+    def query_faq(keyword: str) -> str:
+        """查知识库。keyword: 问法"""
+        bucket = current_citations.get()
+        if not hits:
+            bucket.fill([])
+            return "未在 FAQ 知识库中找到相关内容。"
+        bucket.fill(
+            [
+                Citation(
+                    n=1,
+                    chunk_id=7,
+                    section_path="退货退款政策 > 运费规则",
+                    question="运费规则",
+                    answer="满 99 元包邮,未满收 8 元。",
+                    score=0.91,
+                )
+            ]
+        )
+        return "知识库命中 1 条\n[1] 章节:退货退款政策 > 运费规则\n    内容:满 99 元包邮。"
+
+    return query_faq
+
+
+def _reg_with(tool_obj) -> ToolRegistry:
+    reg = ToolRegistry()
+    reg.register(tool_obj)
+    return reg
+
+
+async def test_zero_hits_abstains_without_generating(session):
+    """检索零命中:不进生成(不流式吐半成品),拒答并入池 retrieval_low_conf。"""
+    model = FakeToolModel(tool_calls=[_tool_call(name="query_faq", args={"keyword": "货到付款"})])
+    events = await _events(model, session, registry=_reg_with(_cited_tool(hits=False)))
+
+    kinds = [e.event for e in events]
+    assert kinds == ["tool_start", "tool_end", "token", "done"]
+    assert events[-1].data["finish_reason"] == "abstain"
+    assert events[-1].data["abstain_source"] == "retrieval_low_conf"
+    assert model.seen_messages is not None  # 只有第一次定工具的调用
+    assert "没有找到可靠的依据" in events[-2].data["content"]
+
+    from sqlalchemy import select
+
+    from app.models.low_confidence_question import LowConfidenceQuestion
+
+    rows = (await session.execute(select(LowConfidenceQuestion))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].source == "retrieval_low_conf"
+    assert rows[0].raw_question == "订单1001的物流到哪了"
+
+
+async def test_weak_evidence_self_check_abstains_and_pools(session):
+    """证据自评判不够:同样拒答,入池来源 self_check 并带上理由。"""
+    model = FakeToolModel(tool_calls=[_tool_call(name="query_faq", args={"keyword": "会员积分"})])
+    checker = FakeCheckModel('{"useful": false, "reason": "证据讲的是运费,不是积分"}')
+    events = await _events(
+        model, session, registry=_reg_with(_cited_tool()), check_model=checker
+    )
+
+    assert checker.calls == 1
+    assert events[-1].data["finish_reason"] == "abstain"
+    assert events[-1].data["abstain_source"] == "self_check"
+
+    from sqlalchemy import select
+
+    from app.models.low_confidence_question import LowConfidenceQuestion
+
+    row = (await session.execute(select(LowConfidenceQuestion))).scalars().one()
+    assert row.source == "self_check"
+    assert "运费" in (row.reason or "")
+
+
+async def test_sufficient_evidence_streams_then_emits_citations(session):
+    """证据够 → 正常流式作答,并在 done 之前下发引用(编号 + 原文)。"""
+    model = FakeToolModel(tool_calls=[_tool_call(name="query_faq", args={"keyword": "邮费"})])
+    checker = FakeCheckModel('{"useful": true, "reason": "运费规则直接回答了包邮门槛"}')
+    events = await _events(
+        model, session, registry=_reg_with(_cited_tool()), check_model=checker
+    )
+
+    kinds = [e.event for e in events]
+    assert kinds == ["tool_start", "tool_end", "token", "citations", "done"]
+    payload = events[-2].data["citations"]
+    assert payload[0]["n"] == 1
+    assert payload[0]["section_path"] == "退货退款政策 > 运费规则"
+    assert payload[0]["chunk_id"] == 7
+    assert events[-1].data["finish_reason"] == "stop"
+
+
+async def test_no_faq_call_skips_quality_gate(session):
+    """没走知识库(查物流这类)不做证据自评:业务数据类的答案不该被知识闸拦。"""
+    checker = FakeCheckModel('{"useful": false, "reason": "x"}')
+    model = FakeToolModel(tool_calls=[_tool_call()])
+    events = await _events(model, session, check_model=checker)
+    assert checker.calls == 0
+    assert events[-1].data["finish_reason"] == "stop"

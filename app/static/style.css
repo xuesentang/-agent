@@ -116,3 +116,101 @@ body {
   cursor: pointer;
 }
 #send:disabled { background: #a8c0ff; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- ch04 引用与反馈 */
+
+/* 引用角标:答案里的 [n] 变成小方块,点了开右侧原文面板 */
+.cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin: 0 2px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 4px;
+  background: #e8f0ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: super;
+  cursor: pointer;
+}
+.cite:hover { background: #cfdefe; }
+
+.source-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.source-chip {
+  border: 1px solid #e5e6eb;
+  background: #fff;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #4e5969;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-chip:hover { background: #f2f3f5; }
+
+/* 右侧来源面板 */
+#source-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(380px, 92vw);
+  height: 100vh;
+  background: #fff;
+  border-left: 1px solid #e5e6eb;
+  box-shadow: -8px 0 24px rgba(31, 35, 41, 0.08);
+  transform: translateX(104%);
+  transition: transform 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+#source-panel.open { transform: translateX(0); }
+.source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e6eb;
+  font-size: 14px;
+  font-weight: 600;
+}
+.source-head button {
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: #86909c;
+  cursor: pointer;
+}
+#source-body { padding: 14px 16px; overflow-y: auto; font-size: 13px; line-height: 1.7; }
+.source-where { font-weight: 600; color: #1d4ed8; margin-bottom: 8px; }
+.source-q { color: #4e5969; margin-bottom: 8px; }
+.source-a { white-space: pre-wrap; color: #1f2329; }
+.source-meta { margin-top: 12px; font-size: 12px; color: #a3a9b3; }
+
+/* 满意度反馈:点一次点亮并锁定 */
+.feedback { margin-top: 6px; }
+.feedback-inner { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #86909c; }
+.fb-btn {
+  border: 1px solid #e5e6eb;
+  background: #fff;
+  border-radius: 999px;
+  width: 30px;
+  height: 24px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.fb-btn:hover:not(:disabled) { background: #f2f3f5; }
+.fb-btn.active { border-color: #3370ff; background: #e8f0ff; }
+.fb-btn.locked { opacity: 0.45; cursor: not-allowed; }
+.feedback-done { color: #0a7a3d; }
+
+/* 拒答:灰一点的答话,和正常答复区分开 */
+.bubble.abstained { background: #fafafa; border: 1px dashed #e5e6eb; color: #4e5969; }

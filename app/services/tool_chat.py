@@ -26,11 +26,13 @@ from app.core.llm import get_chat_model
 from app.core.prompts import build_chat_prompt_with_tools
 from app.core.session import trim_history
 from app.core.tools.business_tools import build_default_registry
-from app.core.tools.context import current_conversation_id
+from app.core.tools.context import CitationBucket, current_citations, current_conversation_id
 from app.core.tools.executor import ToolExecutor, ToolResult
 from app.core.tools.registry import ToolRegistry
 from app.models.message import Message
-from app.repositories import conversation_repo, message_repo
+from app.rag.citations import format_evidence
+from app.rag.selfcheck import ABSTAIN_REPLY, check_evidence
+from app.repositories import conversation_repo, low_confidence_repo, message_repo
 
 logger = logging.getLogger(__name__)
 
@@ -113,10 +115,17 @@ async def chat_with_tools(
     model: ChatOpenAI | None = None,
     registry: ToolRegistry | None = None,
     executor: ToolExecutor | None = None,
+    check_model=None,
 ) -> AsyncGenerator[ServerSentEvent, None]:
     """Yield SSE events(spec D7):
-    tool_start → token… → tool_end → token… → done,或单条 error。
+    tool_start → token… → tool_end → token… → citations → done,或单条 error。
     done 事件带 conversation_id,前端据此续聊;new_conversation=True 强制开新会话。
+
+    ch04 生成质量控制插在工具执行之后、生成之前:
+    - 检索零命中 → 拒答(入池 retrieval_low_conf);
+    - 证据自评判不够 → 拒答(入池 self_check);
+    两条都不进生成,避免先流式吐一段再道歉。
+    citations 事件下发引用编号与原文,前端渲染可点角标。
     """
     model = model if model is not None else get_chat_model()
     registry = registry if registry is not None else build_default_registry()
@@ -142,6 +151,7 @@ async def chat_with_tools(
             return
 
         token_ctx = current_conversation_id.set(conv.id)
+        citation_ctx = current_citations.set(CitationBucket())  # 每轮独立桶,避免串味
         try:
             # 历史先读、本轮后落:history 不含当前输入(与 CH01 prompt {input} 分工一致)。
             try:
@@ -217,6 +227,45 @@ async def chat_with_tools(
                         yield _sse("error", {"code": "DB_ERROR", "message": err})
                         return
 
+            # 2.5 生成前的质量闸(ch04):检索零命中 / 证据自评不够 → 拒答并入池。
+            # 闸口必须在生成之前:答复是流式的,吐出去再判就只剩事后道歉了。
+            bucket = current_citations.get() or CitationBucket()
+            citations = bucket.items
+            if bucket.called:
+                verdict = None
+                if citations and get_settings().evidence_selfcheck_enabled:
+                    verdict = await check_evidence(
+                        message, format_evidence(citations), model=check_model
+                    )
+                if not citations or (verdict is not None and not verdict.useful):
+                    source = "self_check" if citations else "retrieval_low_conf"
+                    reason = verdict.reason if verdict is not None else "检索零命中"
+                    try:
+                        await low_confidence_repo.add_question(
+                            session,
+                            raw_question=message,
+                            source=source,
+                            reason=reason or None,
+                            conversation_id=conv.id,
+                        )
+                    except Exception as exc:  # noqa: BLE001 - 入池失败不影响拒答
+                        logger.warning("低置信度问题入池失败:%s", exc)
+                    err = await persist(conv.id, role="assistant", content=ABSTAIN_REPLY)
+                    if err:
+                        yield _sse("error", {"code": "DB_ERROR", "message": err})
+                        return
+                    yield _sse("token", {"content": ABSTAIN_REPLY})
+                    yield _sse(
+                        "done",
+                        {
+                            "session_id": session_id,
+                            "conversation_id": conv.id,
+                            "finish_reason": "abstain",
+                            "abstain_source": source,
+                        },
+                    )
+                    return
+
             # 3. 收敛:流式吐终答;二次仍要工具 → 兜底摘要,不再执行(spec §3)。
             messages = prompt_messages + [first] + tool_messages
             finish_reason = "stop"
@@ -256,6 +305,12 @@ async def chat_with_tools(
             if err:
                 yield _sse("error", {"code": "DB_ERROR", "message": err})
                 return
+            if citations:
+                # 引用编号与原文随流下发:前端渲染可点角标,点开看来源章节与原文
+                yield _sse(
+                    "citations",
+                    {"citations": [c.to_payload() for c in citations]},
+                )
             yield _sse(
                 "done",
                 {
@@ -265,4 +320,5 @@ async def chat_with_tools(
                 },
             )
         finally:
+            current_citations.reset(citation_ctx)
             current_conversation_id.reset(token_ctx)

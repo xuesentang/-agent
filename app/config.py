@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # import 时就按 http(s):// 形式解析,相对路径直接抛 ConnectionConfigException。
     vector_store_uri: str = "./data/milvus_lite.db"
     embedding_model: str = "BAAI/bge-m3"
+    # CH04: 检索增强 — 重排模型 + 生成前的证据自评开关。
+    rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    # 检索证据自评(生成前闸门):关掉就只按「零命中」拒答
+    evidence_selfcheck_enabled: bool = True
     # CH03: 对话挖知识定时任务(默认关;开了 lifespan 起后台循环,按 interval 跑一轮)
     mine_qa_enabled: bool = False
     mine_qa_interval_hours: int = 24

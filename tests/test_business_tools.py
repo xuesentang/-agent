@@ -24,7 +24,8 @@ def _call(name: str, args: dict, cid: str = "call_1") -> dict:
 
 
 async def _db_tools(session_factory, retriever: Retriever | None = None) -> dict:
-    return {t.name: t for t in build_db_tools(session_factory, retriever)}
+    # 单测关掉 LLM 改写:只留同义词扩展,不连外部模型
+    return {t.name: t for t in build_db_tools(session_factory, retriever, rewrite=False)}
 
 
 def _fake_retriever(chunks: list[KnowledgeChunk] | None = None) -> Retriever:
@@ -35,7 +36,12 @@ def _fake_retriever(chunks: list[KnowledgeChunk] | None = None) -> Retriever:
     if chunks:
         store.upsert(
             [
-                {"chunk_id": c.id, "embedding": embedder.embed_texts([c.embedding_text()])[0]}
+                {
+                    "chunk_id": c.id,
+                    "embedding": embedder.embed_texts([c.embedding_text()])[0],
+                    "text": c.embedding_text(),
+                    "category": c.category,
+                }
                 for c in chunks
             ]
         )
@@ -86,9 +92,9 @@ async def test_query_faq_vector_hit(session, session_factory):
     chunk = await _seed_chunk(session, "签收后 7 天内可退,吊牌完好。", questions="退货政策是什么")
     tools = await _db_tools(session_factory, _fake_retriever([chunk]))
     out = (await tools["query_faq"].ainvoke(_call("query_faq", {"keyword": "退货"}))).content
-    assert "找到 1 条相关 FAQ:" in out
-    assert "问:退货政策是什么" in out
-    assert "答:签收后 7 天内可退,吊牌完好。" in out
+    assert "知识库命中 1 条" in out
+    assert "[1]" in out                      # 证据带引用编号(ch04)
+    assert "签收后 7 天内可退,吊牌完好。" in out
 
 
 async def test_query_faq_vector_miss_wording(session_factory):

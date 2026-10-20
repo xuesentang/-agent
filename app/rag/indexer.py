@@ -158,7 +158,17 @@ async def build_index(
                 break
             vectors = embedder.embed_texts([c.embedding_text() for c in pending])
             store.upsert(
-                [{"chunk_id": c.id, "embedding": v} for c, v in zip(pending, vectors)]
+                [
+                    {
+                        "chunk_id": c.id,
+                        "embedding": v,
+                        # text 供 BM25 索引(关键词召回那一路),category 供元数据过滤;
+                        # 两者都随块一起写,避免二次回表。
+                        "text": c.embedding_text(),
+                        "category": c.category or "",
+                    }
+                    for c, v in zip(pending, vectors)
+                ]
             )
             for chunk in pending:
                 await knowledge_repo.mark_done(session, chunk.id, str(chunk.id))
