@@ -213,3 +213,15 @@ async def test_rewrite_query_falls_back_when_model_fails():
 
     rq = await rewrite_query("退货要几天", model=BoomModel())
     assert rq.canonical == "退货要几天"  # 理解层挂了,T+检索不能跟着挂
+
+
+def test_default_strategy_is_dense():
+    """四策略对照的结论要锁在代码里,不能只写在 dev-notes。
+
+    357 块库上 dense 的 R@5 0.81 / MRR 0.709;hybrid R@5 高 0.03 但 MRR 低 0.155;
+    hybrid_rerank 把 MRR 救到 0.664、代价是 R@10 从 0.94 掉到 0.90 + 2.27G 权重。
+    有人把默认改回 hybrid_rerank 时这条会红。
+    """
+    from app.rag.retriever import DEFAULT_STRATEGY
+
+    assert DEFAULT_STRATEGY == "dense"

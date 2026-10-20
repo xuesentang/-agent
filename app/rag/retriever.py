@@ -4,7 +4,12 @@
 - dense        纯向量(COSINE);
 - bm25         纯关键词(Milvus 原生 BM25 + jieba 分词);
 - hybrid       两路各 Top-50 → hybrid_search 配 RRF 融合;
-- hybrid_rerank 混合粗排 Top-20 → bge-reranker-v2-m3 精排 → Top-K(默认)。
+- hybrid_rerank 混合粗排 Top-20 → bge-reranker-v2-m3 精排 → Top-K。
+
+**默认走 dense**(2026-10-20 四策略对照的结论,见 dev-notes/ch04.md「定策略」):
+357 块库上 dense 的 R@5 0.81 / R@10 0.94 / MRR 0.709,hybrid 虽然 R@5 高 0.03
+但 MRR 低 0.155,hybrid_rerank 把 MRR 救回 0.664 却把 R@10 压到 0.90,还要多付
+2.27G 权重与 CPU 精排。三条都保留可切换,别再默认挂重排。
 
 理解层在检索侧:口语问法先归一(canonical)喂向量与关键词,同义词只扩进 BM25 查询,
 入库侧一个字不改(见 query_rewrite 的模块注释)。
@@ -28,7 +33,7 @@ logger = logging.getLogger(__name__)
 _SAFE_CATEGORY = re.compile(r"^[\w\u4e00-\u9fff][\w\u4e00-\u9fff ·/、-]*$")
 
 STRATEGIES = ("dense", "bm25", "hybrid", "hybrid_rerank")
-DEFAULT_STRATEGY = "hybrid_rerank"
+DEFAULT_STRATEGY = "dense"
 DEFAULT_TOP_K = 10
 RERANK_POOL = 20  # 进重排的粗排候选数(ch04:精排出 Top-10)
 
