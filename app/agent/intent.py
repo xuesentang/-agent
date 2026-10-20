@@ -1,4 +1,4 @@
-"""意图识别:一个 prompt 判七类,再加一张分流表。
+"""意图识别:一个 prompt 判七类 + 「其他」兜底,再加一张分流表。
 
 两件事分开写是有意的:
 - **判什么**(意图)交给模型,它是模糊语义的活;
@@ -7,9 +7,13 @@
 混在一起的后果是:改一次分流要动 prompt,改一次 prompt 要重测分流,
 两个都不稳定的东西互相拽着。表驱动之后,CH06 加「其他」兜底类只加一行。
 
-解析失败不猜:落到「售后」(业务数据类,直进主力 Agent)。理由是这条路的失败
-代价最小——闲聊类是零模型调用的固定话术,把没判出来的问题当寒暄等于直接放弃;
-知识类要先过检索闸,判错就多一次拒答。
+解析失败不猜:落到「其他」(第六章第 4 点要求留这个兜底类)。它的出口和业务
+数据类一样是直进主力 Agent——失败代价最小:闲聊是零模型调用的固定话术,把没判
+出来的问题当寒暄等于放弃;知识/退款类要先过检索闸,判错就是一次拒答。
+
+**第六章起退款退货与售后合并到「退款子流程」出口**(ROUTE_REFUND):先拿订单数据、
+再扩写检索政策条款,最后只把「这一单能不能退/怎么处理」交给 Agent。CH05 时售后
+走的是纯业务数据口,这里改口子是为提示词第 5 点的确定性要求。
 """
 
 from __future__ import annotations
@@ -17,34 +21,37 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from app.agent.query_understanding import history_text
 from app.rag.query_rewrite import _parse_json
 
 logger = logging.getLogger(__name__)
 
-# 七类意图(提示词第 6 点),顺序即 prompt 里的选项顺序
-INTENTS = ("物流", "订单", "商品咨询", "退款退货", "售后", "投诉", "闲聊")
+# 七类意图(第五章第 6 点)+ 「其他」兜底(第六章第 4 点),顺序即 prompt 里的选项顺序
+INTENTS = ("物流", "订单", "商品咨询", "退款退货", "售后", "投诉", "闲聊", "其他")
 
 # 四个出口
 ROUTE_KNOWLEDGE = "knowledge"  # 先检索 → 过闸 → Agent
 ROUTE_BUSINESS = "business"  # 不预检索,直接进 Agent
 ROUTE_COMPLAINT = "complaint"  # 不进 Agent,安抚 + 给选项
 ROUTE_CHITCHAT = "chitchat"  # 固定话术,零模型调用
+ROUTE_REFUND = "refund"  # 确定性子流程:订单数据 + 政策检索 → Agent 判断
 
 INTENT_ROUTES: dict[str, str] = {
     "物流": ROUTE_BUSINESS,
     "订单": ROUTE_BUSINESS,
     "商品咨询": ROUTE_KNOWLEDGE,
-    "退款退货": ROUTE_KNOWLEDGE,
-    "售后": ROUTE_BUSINESS,
+    "退款退货": ROUTE_REFUND,
+    "售后": ROUTE_REFUND,
     "投诉": ROUTE_COMPLAINT,
     "闲聊": ROUTE_CHITCHAT,
+    "其他": ROUTE_BUSINESS,
 }
 
-FALLBACK_INTENT = "售后"
+FALLBACK_INTENT = "其他"
 
-INTENT_PROMPT = """你是电商客服系统的意图分类器。把用户这句话归到下面七类之一。
+INTENT_PROMPT = """你是电商客服系统的意图分类器。把用户这句话归到下面八类之一。
 
-类别(只能选这七个):
+类别(只能选这八个):
 - 物流:查快递进度、问什么时候到、催发货、改地址
 - 订单:查订单内容、金额、状态、改单取消
 - 商品咨询:问商品参数、规格、型号、材质、价格、库存
@@ -52,15 +59,20 @@ INTENT_PROMPT = """你是电商客服系统的意图分类器。把用户这句�
 - 售后:已购商品出问题要维修、换货、补偿,或需要查售后进度
 - 投诉:表达不满、要投诉、要求追责或赔偿
 - 闲聊:打招呼、道谢、与购物无关的聊天
+- 其他:以上七类都不贴切,或者信息太少判不出来。**拿不准就选它**,不要硬塞进某个业务类
 
-判断时以「用户想干什么」为准,不要被提到的商品或订单带偏:
+判断时以「用户想干什么」为准,不要被提到的商品或订单带偏。边界样例:
 - 「我买的鞋开胶了能退吗」→ 退款退货(问政策),不是售后
 - 「我这个订单申请退货了,进度到哪了」→ 售后(查进度),不是退款退货
-- 「你们这破快递我要投诉」→ 投诉
+- 「能换货吗」→ 售后(换货是售后动作),不是退款退货
 - 「订单1001的物流到哪了」→ 物流
+- 「你们这破快递我要投诉」→ 投诉
+- 「在吗」→ 闲聊
+- 「你们公司创始人是谁」→ 其他(与购物无关且不属于闲聊式寒暄)
+- 「那个怎么样了」→ 其他(完全无法判断在问什么)
 
 只输出 JSON,不要解释:
-{{"intent": "七类之一", "confidence": 0.0 到 1.0 之间的小数}}
+{{"intent": "上面八个类别之一", "confidence": 0.0 到 1.0 之间的小数}}
 
 用户这句话:{question}"""
 
@@ -80,7 +92,7 @@ def route_of(intent: str) -> str:
 
 
 async def classify_intent(question: str, *, model=None, history: list | None = None) -> IntentResult:
-    """判七类。模型异常或 JSON 不可用 → 落 FALLBACK_INTENT,不抛异常打断图。"""
+    """判八类(七类 + 其他)。模型异常或 JSON 不可用 → 落 FALLBACK_INTENT,不抛异常。"""
     if model is None:
         try:
             from app.core.llm import get_extract_model
@@ -92,9 +104,10 @@ async def classify_intent(question: str, *, model=None, history: list | None = N
 
     prompt = INTENT_PROMPT.format(question=question)
     if history:
-        # 本章只把最近几轮当背景贴上去,真正的指代补全在 CH06
-        recent = "\n".join(f"{m.get('role', '')}:{m.get('content', '')}" for m in history[-4:])
-        prompt = f"最近对话:\n{recent}\n\n{prompt}"
+        # 判意图时把最近几轮当背景贴上去:指代在这一步还没补全时要靠它
+        recent = history_text(history, limit=4)
+        if recent != "(无)":
+            prompt = f"最近对话:\n{recent}\n\n{prompt}"
 
     try:
         resp = await model.ainvoke([("human", prompt)], response_format={"type": "json_object"})
@@ -125,7 +138,7 @@ def parse_intent(text: str) -> IntentResult:
                 intent = known
                 break
     if intent not in INTENT_ROUTES:
-        logger.info("意图不在七类内,落兜底:%r", intent)
+        logger.info("意图不在八类内,落兜底:%r", intent)
         return IntentResult(FALLBACK_INTENT, route_of(FALLBACK_INTENT), fallback=True, raw=text)
 
     try:

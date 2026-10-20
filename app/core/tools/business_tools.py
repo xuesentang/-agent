@@ -19,6 +19,7 @@ from typing import Literal
 from langchain_core.tools import BaseTool
 from langchain_core.tools import tool
 
+from app.core.mock_orders import order_view
 from app.core.tools.context import current_citations, current_conversation_id
 from app.core.tools.registry import ToolRegistry
 from app.rag.citations import build_citations, format_evidence
@@ -61,14 +62,11 @@ _MOCK_EPOCH_DT = datetime(2026, 6, 1, 8, 0, 0)
 def query_order(order_id: str) -> str:
     """查询订单信息:商品、金额、状态、下单时间。
     order_id: 订单号,如 1001"""
-    rng = random.Random(f"order:{order_id}")
-    name, price = rng.choice(_ORDER_PRODUCTS)
-    qty = rng.randint(1, 3)
-    status = rng.choice(_ORDER_STATUS)
-    order_date = (_MOCK_EPOCH_DATE + timedelta(days=rng.randint(0, 300))).isoformat()
+    # 数据来自 mock_orders 的唯一产地:订单选择器卡片与这里查出来必须一致
+    view = order_view(order_id)
     return (
-        f"订单 {order_id}:{name} × {qty},实付 ¥{price * qty:.2f},"
-        f"当前状态「{status}」,下单日期 {order_date}。"
+        f"订单 {order_id}:{view.product} × {view.quantity},实付 ¥{view.amount:.2f},"
+        f"当前状态「{view.status}」,下单日期 {view.order_date}。"
     )
 
 

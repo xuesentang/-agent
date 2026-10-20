@@ -36,6 +36,43 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_CONTENT_LENGTH = 2000
 
+# 每轮开跑前显式重置的本轮字段。
+#
+# checkpointer 以 thread_id = conversation_id 保留 State,下一轮只更新输入那几项,
+# 其余字段原样留在上一次的值上。于是上一轮的 `order_options`、`finish_reason`
+# 会漏到本轮的 done 事件里——第六章联调时真实发生过:本轮闸没过走了拒答,
+# 前端却既收到拒答话术又收到上一轮的订单卡片。
+#
+# 放在调用点而不是每个节点里:节点只对自己写的字段负责,"一轮从哪开始"是服务层
+# 的知识。要新增本轮字段,加到这张表里,别指望节点挨个清。
+_TURN_RESET: dict = {
+    "canonical_query": "",
+    "resolved_query": "",
+    "understanding_changed": False,
+    "understanding_fallback": False,
+    "slot_order_id": "",
+    "intent": "",
+    "intent_confidence": 0.0,
+    "intent_fallback": False,
+    "route": "",
+    "order_facts": "",
+    "order_options": [],
+    "route_queries": [],
+    "citations": [],
+    "top_score": 0.0,
+    "gate_passed": None,
+    "gate_reason": "",
+    "gate_detail": "",
+    "reply": "",
+    "finish_reason": "",
+    "actions": [],
+    "trail": [],
+    "steps": 0,
+    "tokens": 0,
+    "stopped_by": "",
+    "trace": {},
+}
+
 
 def _sse(event: str, data: dict) -> ServerSentEvent:
     return ServerSentEvent(data=data, event=event)
@@ -80,6 +117,18 @@ def _custom_to_sse(data: dict) -> ServerSentEvent | None:
             "intent",
             {"intent": data.get("intent"), "route": data.get("route"), "confidence": data.get("confidence")},
         )
+    if kind == "order_options":
+        return _sse("order_options", {"orders": data.get("orders") or []})
+    if kind == "resolved":
+        return _sse(
+            "resolved",
+            {
+                "resolved": data.get("resolved", ""),
+                "canonical": data.get("canonical", ""),
+                "changed": bool(data.get("changed")),
+                "order_id": data.get("order_id") or None,
+            },
+        )
     if kind == "gate":
         return _sse(
             "gate",
@@ -104,6 +153,8 @@ def build_default_deps(session_factory) -> AgentDeps:
         session_factory=session_factory,
         intent_model=get_extract_model(),
         check_model=get_extract_model(),
+        understand_model=get_extract_model(),
+        expand_model=get_extract_model(),
         kb_min_score=settings.kb_min_score,
         max_steps=settings.agent_max_steps,
         token_budget=settings.agent_token_budget,
@@ -142,6 +193,7 @@ async def chat_with_agent(
     conversation_id: int | None = None,
     *,
     new_conversation: bool = False,
+    order_id: str | None = None,
     session: AsyncSession,
     deps: AgentDeps | None = None,
     graph=None,
@@ -177,7 +229,13 @@ async def chat_with_agent(
             final_state: dict = {}
             try:
                 async for chunk in app_graph.astream(
-                    {"user_input": message, "history": history},
+                    {
+                        **_TURN_RESET,
+                        "user_input": message,
+                        "history": history,
+                        "user_key": session_id,
+                        "order_id": order_id or "",
+                    },
                     {"configurable": {"thread_id": str(conv.id)}},
                     stream_mode="custom",
                     version="v2",
@@ -221,6 +279,7 @@ async def chat_with_agent(
                     "intent": final_state.get("intent"),
                     "route": final_state.get("route"),
                     "actions": final_state.get("actions") or [],
+                    "order_options": final_state.get("order_options") or [],
                     "gate": {
                         "passed": final_state.get("gate_passed"),
                         "reason": final_state.get("gate_reason") or "",

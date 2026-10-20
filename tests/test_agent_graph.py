@@ -51,6 +51,36 @@ class ScriptedAgentModel:
         yield AIMessageChunk(content=self.text)
 
 
+class ScriptedUnderstandModel:
+    """指代消解 + 问法归一:按需要返回补全后的问题与订单号。"""
+
+    def __init__(self, resolved: str | None = None, canonical: str | None = None, order_id=None, changed=False):
+        self.resolved = resolved
+        self.canonical = canonical
+        self.order_id = order_id
+        self.changed = changed
+        self.calls = 0
+
+    async def ainvoke(self, messages, **kwargs):
+        self.calls += 1
+        prompt = str(messages[-1][1] if isinstance(messages[-1], tuple) else messages[-1])
+        question = prompt.rsplit("用户这句话:", 1)[-1].strip()
+        resolved = self.resolved or question
+        canonical = self.canonical or resolved
+        payload = (
+            '{"resolved": "%s", "canonical": "%s", "order_id": %s, "changed": %s}'
+            % (resolved, canonical, f'"{self.order_id}"' if self.order_id else "null", str(self.changed).lower())
+        )
+        return AIMessage(content=payload)
+
+
+class ScriptedExpandModel:
+    """把一条问题扩成三条(带原句)。"""
+
+    async def ainvoke(self, messages, **kwargs):
+        return AIMessage(content='{"queries": ["退货运费谁承担", "退货政策 运费", "无理由退货 运费"]}')
+
+
 class ScriptedCheckModel:
     def __init__(self, useful: bool = True, reason: str = "ok"):
         self.useful = useful
@@ -83,7 +113,7 @@ def _hits(scores: list[float]):
     ]
 
 
-def _deps(intent="售后", useful=True, checkpointer=None, **kw):
+def _deps(intent="售后", useful=True, checkpointer=None, understand=None, **kw):
     reg = ToolRegistry()
     reg.register(fake_order)
     model = ScriptedAgentModel()
@@ -94,6 +124,8 @@ def _deps(intent="售后", useful=True, checkpointer=None, **kw):
         session_factory=None,
         intent_model=ScriptedIntentModel(intent),
         check_model=check,
+        understand_model=understand or ScriptedUnderstandModel(),
+        expand_model=ScriptedExpandModel(),
         kb_min_score=0.45,
         **({"checkpointer": checkpointer} if checkpointer else {}),
         **kw,
@@ -112,6 +144,10 @@ def patch_retrieve(monkeypatch):
         return _hits(list(state["scores"]))
 
     monkeypatch.setattr(graph_module, "retrieve", fake_retrieve)
+    # 退款子流程自己有 import,不补这一处会打到真 Milvus(单测不该碰外部依赖)
+    from app.agent import refund_flow as refund_module
+
+    monkeypatch.setattr(refund_module, "retrieve", fake_retrieve)
     return state
 
 
@@ -164,7 +200,7 @@ async def test_knowledge_route_must_retrieve_then_pass_gate(patch_retrieve):
 
 async def test_knowledge_route_abstains_when_score_low(patch_retrieve):
     patch_retrieve["scores"] = (0.39,)
-    deps, model, check = _deps(intent="退款退货")
+    deps, model, check = _deps(intent="商品咨询")
     app = build_agent_graph(deps)
     out = await app.ainvoke({"user_input": "帮我写首诗"}, {"configurable": {"thread_id": "t1"}})
     assert out["gate_passed"] is False
@@ -195,7 +231,7 @@ async def test_intent_fallback_keeps_graph_moving(patch_retrieve):
     app = build_agent_graph(deps)
     out = await app.ainvoke({"user_input": "随便说点什么"}, {"configurable": {"thread_id": "t1"}})
     assert out["intent_fallback"] is True
-    assert out["intent"] == "售后"
+    assert out["intent"] == "其他"
     assert out["finish_reason"] == "stop"
 
 
@@ -226,3 +262,68 @@ async def test_different_threads_are_isolated(patch_retrieve):
     await app.ainvoke({"user_input": "你好"}, {"configurable": {"thread_id": "a"}})
     snapshot = await app.aget_state({"configurable": {"thread_id": "b"}})
     assert snapshot.values == {}
+
+
+async def test_refund_without_order_id_stops_and_offers_cards(patch_retrieve):
+    """验收标准 4:不带订单号问退款 → 流程停住,给出候选订单卡片。"""
+    deps, model, check = _deps(intent="退款退货")
+    app = build_agent_graph(deps)
+    out = await app.ainvoke(
+        {"user_input": "我要退款", "user_key": "u-demo"}, {"configurable": {"thread_id": "t1"}}
+    )
+    assert out["finish_reason"] == "need_order"
+    assert len(out["order_options"]) == 3
+    assert all({"order_id", "product", "amount", "status"} <= set(o) for o in out["order_options"])
+    assert model.calls == 0  # 缺槽位就不进 Agent,不猜单号
+    assert patch_retrieve["calls"] == 0
+
+
+async def test_refund_with_order_id_pulls_order_and_policy(patch_retrieve):
+    """验收标准 3:有订单号 → 先拿订单数据,再检索政策,最后交给 Agent 判断。"""
+    patch_retrieve["scores"] = (0.72,)
+    deps, model, check = _deps(intent="退款退货")
+    app = build_agent_graph(deps)
+    out = await app.ainvoke(
+        {"user_input": "这个能退吗", "order_id": "1001"},
+        {"configurable": {"thread_id": "t1"}},
+    )
+    assert out["route"] == "refund"
+    assert "1001" in out["order_facts"]
+    assert out["gate_passed"] is True
+    assert patch_retrieve["calls"] == 3  # 扩成三条查询,各查一遍
+    assert model.calls == 1
+    assert [a["id"] for a in out["actions"]] == ["apply_refund"]
+    # 证据里订单事实与政策条款都在
+    assert out["citations"]
+
+
+async def test_refund_is_blocked_when_policy_evidence_is_weak(patch_retrieve):
+    patch_retrieve["scores"] = (0.3,)
+    deps, model, check = _deps(intent="售后")
+    app = build_agent_graph(deps)
+    out = await app.ainvoke(
+        {"user_input": "这个能退吗", "order_id": "1001"},
+        {"configurable": {"thread_id": "t1"}},
+    )
+    assert out["finish_reason"] == "abstain"
+    assert out["gate_reason"] == "score_low"
+    assert model.calls == 0
+
+
+async def test_understanding_fills_pronoun_from_history(patch_retrieve):
+    """验收标准 3 的前半:指代先被补全,补全结果进检索。"""
+    understood = ScriptedUnderstandModel(
+        resolved="订单 1001 的无线蓝牙降噪耳机能退吗",
+        canonical="耳机 退货条件",
+        order_id="1001",
+        changed=True,
+    )
+    deps, model, _ = _deps(intent="退款退货", understand=understood)
+    app = build_agent_graph(deps)
+    out = await app.ainvoke(
+        {"user_input": "它能退吗", "history": []}, {"configurable": {"thread_id": "t1"}}
+    )
+    assert understood.calls == 1
+    assert out["resolved_query"].startswith("订单 1001")
+    assert out["slot_order_id"] == "1001"
+    assert out["understanding_changed"] is True

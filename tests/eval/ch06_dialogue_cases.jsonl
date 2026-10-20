@@ -1,0 +1,12 @@
+{"id": "S1", "desc": "物流 → 退款(指代) → 物流(指代)", "turns": [{"text": "订单 1001 的物流到哪了", "intent": "物流"}, {"text": "那它能退吗", "intent": "退款退货", "resolved_must_contain": ["1001"]}, {"text": "那这东西现在到哪了", "intent": "物流", "resolved_must_contain": ["1001"]}]}
+{"id": "S2", "desc": "商品咨询 → 售后 → 闲聊", "turns": [{"text": "W40 有宽楦版本吗", "intent": "商品咨询"}, {"text": "买了之后发现挤脚，能换大一号吗", "intent": "售后"}, {"text": "谢谢，麻烦了", "intent": "闲聊"}]}
+{"id": "S3", "desc": "投诉 → 订单 → 带单号退款", "turns": [{"text": "你们这快递太慢了，我要投诉", "intent": "投诉"}, {"text": "算了先帮我看看订单 1003 花了多少钱", "intent": "订单", "resolved_must_contain": ["1003"]}, {"text": "这单我不要了，退了", "intent": "退款退货", "resolved_must_contain": ["1003"]}]}
+{"id": "S4", "desc": "指代链:先问订单再问政策", "turns": [{"text": "我订单 1005 买的是什么", "intent": "订单", "resolved_must_contain": ["1005"]}, {"text": "这个能七天无理由退吗", "intent": "退款退货", "resolved_must_contain": ["1005"]}]}
+{"id": "S5", "desc": "售后进度接着物流问", "turns": [{"text": "订单 1007 的包裹到哪了", "intent": "物流", "resolved_must_contain": ["1007"]}, {"text": "我申请售后了，进度查一下", "intent": "售后", "resolved_must_contain": ["1007"]}]}
+{"id": "S6", "desc": "闲聊后再问商品", "turns": [{"text": "在吗", "intent": "闲聊"}, {"text": "LP300 支持蓝牙预约吗", "intent": "商品咨询"}]}
+{"id": "O1", "odd": true, "text": "你们公司创始人是谁", "intent": "其他"}
+{"id": "O2", "odd": true, "text": "那个怎么样了", "intent": "其他"}
+{"id": "O3", "odd": true, "text": "帮我把这段话翻译成英文", "intent": "其他"}
+{"id": "O4", "odd": true, "text": "今天几号", "intent": "其他"}
+{"id": "O5", "odd": true, "text": "你觉得我该买哪双", "intent": "商品咨询", "note": "边界:求推荐是商品相关的咨询,不该被兜底吃掉"}
+{"id": "O6", "odd": true, "text": "帮我写一首关于秋天的诗", "intent": "其他"}

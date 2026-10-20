@@ -1,4 +1,8 @@
 /* 小智客服聊天页逻辑:fetch + ReadableStream 消费 POST SSE(EventSource 不支持 POST)。
+ * ch06 增量:
+ *   - 订单选择器:缺订单号的退款请求,后端回 order_options,前端渲染可点选的订单卡片,
+ *     点一张就用「同一句原话 + 这个订单号」重发,流程接着走;
+ *   - 退款单:Agent 判断完给「申请退款」按钮,点开是固定类目下拉的简单表单。
  * ch05 增量:
  *   - 顶部流程行:把图走过的节点按顺序显示出来(验收要求"看得见强制检索被走到");
  *   - 「转人工」「建工单」两个按钮:互不绑定,点哪个算哪个,都不点就继续聊。
@@ -25,6 +29,9 @@ if (!sessionId) {
 }
 let conversationId = null;
 let pendingNewConversation = false;
+// ch06: 上一句原话(点订单卡片时用它重发) 与 已确定的订单号(申请退款要用)
+let lastUserMessage = "";
+let selectedOrderId = null;
 
 function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -153,6 +160,7 @@ function renderActions(turn, actions) {
       btn.textContent = action.label + "(已处理)";
       if (action.id === "transfer_human") await doTransfer(btn);
       else if (action.id === "create_ticket") await doCreateTicket(btn);
+      else if (action.id === "apply_refund") await openRefundForm(selectedOrderId);
     });
     turn.actions.appendChild(btn);
   });
@@ -218,6 +226,131 @@ async function doCreateTicket(btn) {
     btn.textContent = "建工单";
     showError(String(err));
   }
+}
+
+/* ---------------------------------------------------------------- 订单选择器 */
+
+function renderOrderCards(turn, orders) {
+  if (!orders || !orders.length) return;
+  const wrap = document.createElement("div");
+  wrap.className = "order-cards";
+  const hint = document.createElement("div");
+  hint.className = "order-hint";
+  hint.textContent = "请点选一笔订单:";
+  wrap.appendChild(hint);
+
+  orders.forEach((o) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "order-card";
+    card.dataset.orderId = o.order_id;
+    const top = document.createElement("div");
+    top.className = "order-top";
+    top.textContent = "订单 " + o.order_id + " · " + o.status;
+    const mid = document.createElement("div");
+    mid.className = "order-mid";
+    mid.textContent = o.product + " × " + o.quantity;
+    const bottom = document.createElement("div");
+    bottom.className = "order-bottom";
+    bottom.textContent = "实付 ¥" + Number(o.amount).toFixed(2) + " · 下单 " + o.order_date;
+    card.append(top, mid, bottom);
+    card.addEventListener("click", () => pickOrder(wrap, o.order_id));
+    wrap.appendChild(card);
+  });
+  turn.msg.appendChild(wrap);
+  scrollToBottom();
+}
+
+// 点选后锁定整组卡片,用同一句原话 + 选中订单号重发,让子流程从断点继续
+function pickOrder(wrap, orderId) {
+  wrap.querySelectorAll(".order-card").forEach((c) => {
+    c.disabled = true;
+    if (c.dataset.orderId === orderId) c.classList.add("picked");
+  });
+  selectedOrderId = orderId;
+  addSystemBubble("已选择订单 " + orderId);
+  if (lastUserMessage) sendMessage(lastUserMessage, orderId);
+}
+
+/* ---------------------------------------------------------------- 退款单 */
+
+let refundReasons = null;
+
+async function loadRefundReasons() {
+  if (refundReasons) return refundReasons;
+  try {
+    const resp = await fetch("/api/v1/refund/reasons");
+    const data = await resp.json();
+    refundReasons = data.reasons || [];
+  } catch (err) {
+    refundReasons = [];
+  }
+  return refundReasons;
+}
+
+async function openRefundForm(orderId) {
+  if (!orderId) {
+    showError("还没有确定订单号,请先点选订单");
+    return;
+  }
+  const reasons = await loadRefundReasons();
+  const box = document.createElement("div");
+  box.className = "refund-form";
+  const title = document.createElement("div");
+  title.className = "refund-title";
+  title.textContent = "申请退款 · 订单 " + orderId;
+
+  const label = document.createElement("label");
+  label.textContent = "退款原因";
+  const select = document.createElement("select");
+  reasons.forEach((r) => {
+    const opt = document.createElement("option");
+    opt.value = r;
+    opt.textContent = r;
+    select.appendChild(opt);
+  });
+  label.appendChild(select);
+
+  const row = document.createElement("div");
+  row.className = "refund-actions";
+  const submit = document.createElement("button");
+  submit.type = "button";
+  submit.className = "action-btn primary";
+  submit.textContent = "提交申请";
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "action-btn";
+  cancel.textContent = "取消";
+  row.append(submit, cancel);
+  box.append(title, label, row);
+  messagesEl.appendChild(box);
+  scrollToBottom();
+
+  cancel.addEventListener("click", () => box.remove());
+  submit.addEventListener("click", async () => {
+    submit.disabled = true;
+    cancel.disabled = true;
+    try {
+      const resp = await fetch("/api/v1/refund/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          order_id: orderId,
+          reason: select.value,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(typeof data.detail === "string" ? data.detail : "HTTP " + resp.status);
+      box.remove();
+      addSystemBubble("退款申请已提交:" + (data.refund_no || "已受理"));
+      addAssistantBubble(data.message);
+    } catch (err) {
+      submit.disabled = false;
+      cancel.disabled = false;
+      showError(String(err));
+    }
+  });
 }
 
 function showError(text) {
@@ -340,6 +473,13 @@ function handleEvent(event, data, turn) {
     case "intent":
       markIntent(turn, data);
       break;
+    case "resolved":
+      if (data.order_id) selectedOrderId = data.order_id;
+      if (data.changed) addSystemBubble("已补全为:" + data.resolved);
+      break;
+    case "order_options":
+      renderOrderCards(turn, data.orders);
+      break;
     case "gate":
       if (!data.passed) {
         addSystemBubble("证据不足,已转入兜底话术(可直接转人工或建工单)");
@@ -386,8 +526,16 @@ function handleEvent(event, data, turn) {
 async function send() {
   const text = inputEl.value.trim();
   if (!text) return;
-  addUserBubble(text);
   inputEl.value = "";
+  sendMessage(text, null);
+}
+
+// orderId 只在「点选订单卡片」这条路上传:普通发消息一律不带,免得一直粘着上一单
+async function sendMessage(text, orderId) {
+  if (!text) return;
+  lastUserMessage = text;
+  if (orderId) selectedOrderId = orderId;
+  addUserBubble(text);
   sendBtn.disabled = true;
   const turn = addAssistantTurn();
 
@@ -400,6 +548,7 @@ async function send() {
         message: text,
         conversation_id: pendingNewConversation ? null : conversationId,
         new_conversation: pendingNewConversation,
+        order_id: orderId || null,
       }),
     });
     pendingNewConversation = false;

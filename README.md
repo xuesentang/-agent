@@ -1,16 +1,18 @@
 # 电商智能客服系统
 
-电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
+电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
 
 ## 功能
 
 | 接口 | 说明 |
 |---|---|
-| `POST /api/v1/chat/stream` | 多轮对话，SSE 流式。CH05 起走 LangGraph：意图识别 → 四路分流 →（知识类）检索 + 置信度闸 → 主力 Agent（ReAct，可多步调工具）。事件含 `node`（节点进出）、`intent`、`gate`、`tool_start`/`tool_end`、`citations`、`done`（带 `actions`） |
+| `POST /api/v1/chat/stream` | 多轮对话，SSE 流式。CH05 起走 LangGraph：指代消解 → 意图识别 → 五路分流 →（知识/退款类）检索 + 置信度闸 → 主力 Agent（ReAct，可多步调工具）。事件含 `node`（节点进出）、`resolved`（补全后的问题）、`intent`、`gate`、`tool_start`/`tool_end`、`order_options`（订单卡片）、`citations`、`done`（带 `actions`）。CH06 起请求可带 `order_id`（前端点选订单卡片后回填） |
 | `POST /api/v1/chat/actions/transfer` | 转人工（前端模拟）：返回「已转接人工客服」+ 客服小猫问候，只留痕不建单 |
 | `POST /api/v1/chat/actions/create-ticket` | 建工单：走 CH02 的 `create_ticket` 工具写 `tickets` 表，与转人工互不绑定 |
+| `GET /api/v1/refund/reasons` | 退款原因固定类目（8 个），退款单下拉用 |
+| `POST /api/v1/refund/apply` | 提交退款单：受理即建一张「售后」工单，工单号当受理号返回 |
 | `POST /api/v1/chat/extract` | 售后描述结构化抽取：`order_id` / `claim_type`（八枚举）/ `expected_solution`，未提及为 `null` |
-| `GET /` | 聊天页（原生 HTML/JS）：消息流、流式渲染、工具轨迹徽章、可点引用角标（点开看来源章节与原文）、每条回答的 👍/👎 反馈 |
+| `GET /` | 聊天页（原生 HTML/JS）：消息流、流式渲染、节点流程行、可点选订单卡片、退款单表单、工具轨迹徽章、可点引用角标（点开看来源章节与原文）、每条回答的 👍/👎 反馈 |
 
 **RAG 进阶**（CH04）：
 
@@ -30,6 +32,15 @@
 - **主力 Agent**（`app/agent/react.py`）：手写 ReAct 循环，三个停止条件（不再要工具 / 步数上限 `AGENT_MAX_STEPS=4` / token 预算 `AGENT_TOKEN_BUDGET=6000`）。缺订单号这类必填信息时由工具的参数校验回灌错误，模型据此追问。
 - **祛魅对照**：`app/agent/naive_loop.py` 是同一件事去掉框架的写法（一个 while + 三个出口），`python -m app.agent.naive_loop "订单 1001 的物流到哪了"` 可以直接看它怎么转。
 - **会话状态**：LangGraph State 贯穿全图，checkpointer 按 `thread_id = conversation_id` 存图状态；对话历史仍以 MySQL `messages` 表为权威源，每轮读出、裁剪、注入 State。
+
+**分流器正式版**（CH06，`app/agent/`）：
+
+- **指代消解 + 问法归一并成一次调用**（`query_understanding.py`）：读同一份上下文的两个活分两次调，会得出两种「用户在说什么」；合并后一份 JSON 出 `resolved` / `canonical` / `order_id`。问题本身完整就 `changed=false` 原样透传——改写不是目的，把好问题揉一遍检索更差。
+- **意图八分类**（`intent.py`）：七类业务意图 + 「其他」兜底，prompt 按四件套写（枚举成选择题 / 强制 JSON 只出 `intent` 与 `confidence` / 边界 few-shot / 拿不准归「其他」）。判意图交给模型、去哪交给 `INTENT_ROUTES` 表，改规矩改表不改 prompt。
+- **五个出口**：物流/订单/「其他」→ 业务数据类直进 Agent；商品咨询 → 知识类（强制检索 + 过闸）；**退款退货/售后 → 退款子流程**；投诉 → 安抚 + 两个独立按钮；闲聊 → 固定话术零模型调用。
+- **退款子流程**（`refund_flow.py`）：顺序写死，不由模型决定——订单号 → `query_order` 拿这一单的事实 → 请求扩写（≤3 条，`chunk_id` 去重取最高分）检索政策 → 过闸 → 只把「这一单能不能退」交给主力 Agent 判断。退款判错一次的代价是赔钱加纠纷，而需要的证据永远是固定两样。
+- **槽位不回填就不猜**：缺订单号时子流程停住，下发 `order_options`（该用户近期 3 单）渲染成聊天流里的可点选卡片；点选后用**同一句原话 + 订单号**重发，子流程从断点继续。退款原因不追问，提交退款单时从固定类目下拉选。
+- **扩写只给容错低的场景**：退款退货/售后才多路扩写，简单 FAQ 不扩；知识库只存一份，扩写在检索侧现查现用。
 
 **五个工具**（`app/core/tools/business_tools.py`）：`query_order` / `query_product` / `query_logistics`（工具内 mock 随机生成，同入参结果确定）、`query_faq`（CH03 起内部为向量语义检索：BGE-M3 嵌入 → Milvus Top-5 → 回 MySQL 取原文；向量库故障时降级 SQL LIKE 兜底）、`create_ticket`（写 tickets 表）。工具基础设施：注册管理、参数 Schema 校验、错误分诊（参数不合法 / 查询落空 / 真故障）、超时控制、暂时性故障重试框架。
 
@@ -141,6 +152,45 @@ curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
 # 期望: 两次 tool_start（query_order → query_logistics）
 ```
 
+## 验收命令（CH06 四条标准）
+
+```bash
+# 起服务同上（devstack 库，端口 8010）
+
+# ①② 多轮意图与指代：6 个多轮场景 + 6 条怪问题/边界题，走真实模型
+python -m tests.eval.run_dialogue_eval --out reports/ch06_dialogue.md
+# 期望: 意图 16/16、指代补全 8/8、怪问题落「其他」5/5
+python -m tests.eval.run_intent_eval --out reports/ch05_intent.md
+# 期望: 38/38，八分类 prompt 不退化
+
+# ③ 指代消解看得见：同一会话两轮，第二轮说「这个能退吗」
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"ch06-a","message":"订单 1003 的物流到哪了","new_conversation":true}'
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" -d '{"session_id":"ch06-a","message":"这个能退吗"}'
+# 期望: event: resolved(resolved="订单 1003 的包裹能退吗", changed=true, order_id="1003")
+#       → intent(route=refund) → node(refund_subflow) → gate(passed=true) → token(订单事实+政策条款) → done
+
+# ④ 缺订单号先弹选择器，点选后子流程接着走
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"ch06-b","message":"我要退货","new_conversation":true}'
+# 期望: event: order_options(3 笔) + done.finish_reason="need_order"
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"session_id":"ch06-b","message":"我要退货","order_id":"<上一步某笔订单号>"}'
+# 期望: gate(passed=true) → token(先报订单事实再追问质量/无理由) → done.actions=[apply_refund]
+
+# 退款单提交（前端表单点「提交申请」走同一接口）
+curl -s --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/refund/apply \
+  -H "Content-Type: application/json" \
+  -d '{"conversation_id":<上一步 id>,"order_id":"1018","reason":"质量问题"}'
+# 期望: {"status":"submitted","refund_no":"T…"}，tickets 表新增一行「售后」
+```
+
+**前端手测**（浏览器打开 `http://127.0.0.1:8010/`）：新会话发「我要退货」→ 聊天流里出现三张订单卡片 → 点一张，卡片锁成选中态并带上订单号重发 → 流程行走到 `refund_subflow`、答复里先报订单事实 → 点「申请退款」弹出表单、原因下拉 8 个类目 → 提交后系统气泡给出受理单号。CH04 遗留的两项一起看：答复里的 `[n]` 角标点开有原文、👍/👎 点一次即锁定。
+
 ## 验收命令（CH04 四条标准）
 
 ```bash
@@ -170,12 +220,13 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 306 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 328 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
 python -m tests.eval.run_rag_eval           # CH04 四策略检索 + Faithfulness + 拒答（需真模型+真库）
 python -m tests.eval.run_intent_eval        # CH05 意图识别，38 条标注样例（需真实 key）
+python -m tests.eval.run_dialogue_eval      # CH06 多轮指代 + 意图 + 怪问题兜底（需真实 key）
 ```
 
 CH04 的评估集是**生成出来的**，脚本按顺序跑（`--reset-store` 重建前会先把 MySQL 的 `vectorize_status` 退回 pending，否则旧向量状态会让块被永久跳过）：
@@ -189,7 +240,7 @@ python -m tests.eval.validate_rag_cases     # 自检：标注对不上库就在�
 python scripts/spotcheck_eval.py --auto 12  # 人工抽检材料（完整答案 + 证据原文）
 ```
 
-eval 阈值 90%。最近真实运行：CH01 抽取 12/13 = 92%；CH02 工具选择 **13/13 = 100%**（连跑两轮稳定）；CH03 换说法召回 **14/14 = 100%**（真 BGE-M3 + Milvus，Top-5 命中判定）。
+eval 阈值 90%。最近真实运行：CH01 抽取 12/13 = 92%；CH02 工具选择 **13/13 = 100%**（连跑两轮稳定）；CH03 换说法召回 **14/14 = 100%**（真 BGE-M3 + Milvus，Top-5 命中判定）；CH05 意图识别 **38/38 = 100%**；CH06 多轮意图 **16/16**、指代补全 **8/8**、怪问题落「其他」**5/5**（`reports/ch06_dialogue.md`）。
 
 CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真重排）：
 
@@ -248,7 +299,11 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 11. 拒答闸以「知识库」为口径：同一轮里既查单/查物流又查知识库时，只要 `query_faq` 零命中就整轮拒答（连同轮的工具结果一起不答），保守取向——宁可少答一次也不让模型凭常识补政策。反方向放行会让「政策类问题」失去唯一的硬约束。
 12. ~~证据自评失败按「证据够」放行~~ CH05 起改为 **fail-closed**（判不了就当不够，走兜底 + 两个出口）：有转人工之后，多拒一次的代价只剩用户多点一下。`degraded` 标记仍保留，入池原因能分辨「判了弱」和「没判成」。
 13. 图状态的 checkpointer 是 `InMemorySaver`（框架自带、零依赖）：进程重启后图中间态清空，但对话历史在 MySQL 里，用户接着聊无感。要跨进程持久化需要 `langgraph-checkpoint-sqlite`，未装（不为一个功能动运行环境）。
-14. 意图识别只有七类、没有「其他」兜底，解析失败一律归「售后」（业务数据类，直进 Agent）——失败代价最小的方向。置信度字段目前只记录不参与路由，CH06 做降级路时才用。
+14. 意图识别八类（七类业务 + 「其他」兜底），解析失败落「其他」（业务数据类，直进 Agent）——失败代价最小的方向。置信度字段只记录、不参与路由：本章按「默认配够格的大模型」走，成本吃紧时的小模型试判 + 低置信度升级重判的降级路没做。
 15. 「转人工」是纯前端模拟：后端只落一条消息留痕，没有真人系统、没有会话状态机。
+16. 订单数据全部来自 `app/core/mock_orders.py` 这一处（AI 合成，20 笔固定的，`order_view()` 是查单工具与订单卡片的唯一同源）。「近期订单」按 `user_key` 取,而 `user_key` 现在是 `session_id`——换会话就看不到「自己的」订单了;真系统里应该按用户 ID。
+17. 退款单受理即建一张「售后」工单，工单号当受理号：没有审批流、没有退款状态机、不回写订单状态。真要跑通退款得有支付侧对接，本章只到「受理」。
+18. 指代消解失败（上游抖动/JSON 不可用）会原样透传，表现是「这个能退吗」没补上订单号 → 弹订单选择器让用户点一下。兜底方向是对的（不许猜单号），但用户会多一次交互；日志里有 `指代消解失败,原样透传` 可查。
+19. checkpointer 按 `thread_id` 跨轮保留 State，所以服务层每轮用 `_TURN_RESET` 显式重置本轮字段（否则上一轮的 `order_options`/`finish_reason` 会漏进本轮 done）。加本轮字段要记得加进那张表。
 
-设计文档：`docs/superpowers/specs/`（ch01/ch02/ch03/ch04 各一份）；实施计划：`docs/superpowers/plans/`；开发留痕：`dev-notes/ch01.md` ~ `dev-notes/ch04.md`。
+设计文档：`docs/superpowers/specs/`（ch01/ch02/ch03/ch04/ch05 各一份）；实施计划：`docs/superpowers/plans/`；开发留痕：`dev-notes/ch01.md` ~ `dev-notes/ch06.md`。

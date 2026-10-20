@@ -31,6 +31,23 @@ class CheckModel:
         return AIMessage(content='{"useful": true, "reason": "ok"}')
 
 
+class UnderstandModel:
+    """原样透传:接口测试不该关心理解质量。"""
+
+    async def ainvoke(self, messages, **kwargs):
+        prompt = str(messages[-1][1] if isinstance(messages[-1], tuple) else messages[-1])
+        question = prompt.rsplit("用户这句话:", 1)[-1].strip()
+        return AIMessage(
+            content='{"resolved": "%s", "canonical": "%s", "order_id": null, "changed": false}'
+            % (question, question)
+        )
+
+
+class ExpandModel:
+    async def ainvoke(self, messages, **kwargs):
+        return AIMessage(content='{"queries": ["退货政策"]}')
+
+
 class FakeAgentModel:
     def __init__(self, with_tool=False):
         self.with_tool = with_tool
@@ -84,6 +101,8 @@ def stub_deps(monkeypatch):
             session_factory=None,
             intent_model=IntentModel(intent),
             check_model=CheckModel(),
+            understand_model=UnderstandModel(),
+            expand_model=ExpandModel(),
             kb_min_score=0.45,
         )
         monkeypatch.setattr(agent_chat, "build_default_deps", lambda _sf: deps)
@@ -207,3 +226,58 @@ async def test_create_ticket_rejects_bad_type(client):
         json={"conversation_id": 1, "ticket_type": "随便"},
     )
     assert resp.status_code == 422
+
+
+async def test_refund_reasons_endpoint_lists_fixed_categories(client):
+    resp = client.get("/api/v1/refund/reasons")
+    assert resp.status_code == 200
+    reasons = resp.json()["reasons"]
+    assert "质量问题" in reasons
+    assert len(reasons) >= 6
+
+
+async def test_refund_apply_writes_ticket_and_rejects_unknown_reason(client, monkeypatch, engine, session):
+    from app.core.tools.business_tools import build_db_tools
+    from app.repositories import conversation_repo
+
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+    reg = ToolRegistry()
+    for t in build_db_tools(maker, retriever=None):
+        reg.register(t)
+    monkeypatch.setattr("app.api.routes.build_default_registry", lambda: reg)
+
+    conv = await conversation_repo.get_or_create(session, None, "u-refund")
+    bad = client.post(
+        "/api/v1/refund/apply",
+        json={"conversation_id": conv.id, "order_id": "1001", "reason": "随便编的理由"},
+    )
+    assert bad.status_code == 422  # 原因必须来自固定类目
+
+    ok = client.post(
+        "/api/v1/refund/apply",
+        json={"conversation_id": conv.id, "order_id": "1001", "reason": "质量问题"},
+    )
+    assert ok.status_code == 200
+    body = ok.json()
+    assert body["status"] == "submitted"
+    assert body["refund_no"]
+    rows = (await session.execute(select(Ticket))).scalars().all()
+    assert len(rows) == 1
+    assert "质量问题" in (rows[0].description or "")
+
+
+async def test_stream_accepts_order_id_slot(client, stub_deps, monkeypatch):
+    """点选订单卡片后前端会回填 order_id,接口要接得住。"""
+    from app.agent import refund_flow as refund_module
+
+    async def no_hits(**kwargs):
+        return []
+
+    monkeypatch.setattr(refund_module, "retrieve", no_hits)
+    stub_deps("退款退货")
+    resp = client.post(
+        "/api/v1/chat/stream",
+        json={"session_id": "t1", "message": "这个能退吗", "order_id": "1001"},
+    )
+    assert resp.status_code == 200
+    assert "event: done" in resp.text

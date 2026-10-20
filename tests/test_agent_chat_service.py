@@ -136,7 +136,7 @@ async def test_knowledge_route_emits_citations(session, monkeypatch):
 
 async def test_abstain_writes_pool_and_returns_actions(session, monkeypatch):
     _patch_retrieve(monkeypatch, scores=(0.3,))
-    events = await _run(session, _deps("退款退货"), text="帮我写首诗")
+    events = await _run(session, _deps("商品咨询"), text="帮我写首诗")
     done = events[-1].data
     assert done["finish_reason"] == "abstain"
     assert [a["id"] for a in done["actions"]] == ["transfer_human", "create_ticket"]
@@ -187,3 +187,33 @@ async def test_graph_failure_yields_error_event(session, monkeypatch):
     events = await _run(session, deps)
     assert events[-1].event == "error"
     assert events[-1].data["code"] == "UPSTREAM_ERROR"
+
+
+async def test_second_turn_does_not_inherit_previous_turn_state(session, monkeypatch):
+    """回归:checkpointer 按会话留 State,上一轮的字段会漏到本轮 done 里。
+
+    第六章联调时真实发生:本轮闸没过走拒答,前端却同时收到上一轮的订单卡片。
+    修法是在服务层每轮显式重置本轮字段(`_TURN_RESET`),这条锁住它。
+    """
+    _patch_retrieve(monkeypatch)
+    monkeypatch.setattr(
+        graph_module,
+        "candidate_orders",
+        lambda user_key, limit=3: [
+            SimpleNamespace(to_payload=lambda: {"order_id": "1001", "product": "耳机", "quantity": 1, "amount": 199.0, "status": "已签收", "order_date": "2026-06-01"})
+        ],
+    )
+
+    deps = _deps("退款退货")  # 第一轮:缺订单号 → 出订单卡片
+    turn1 = await _run(session, deps, text="这个能退吗")
+    done1 = turn1[-1].data
+    assert done1["finish_reason"] == "need_order"
+    assert len(done1["order_options"]) == 1
+
+    deps.intent_model = IntentModel("物流")  # 第二轮:换成业务数据类
+    conv_id = done1["conversation_id"]
+    turn2 = await _run(session, deps, text="订单 1001 到哪了", conversation_id=conv_id)
+    done2 = turn2[-1].data
+    assert done2["order_options"] == [], "上一轮的订单卡片不许漏到本轮"
+    assert done2["finish_reason"] == "stop"
+    assert done2["route"] == "business"

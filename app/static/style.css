@@ -241,3 +241,31 @@ body {
   background: #fff7e8; border: 1px solid #ffe0b2; color: #8a5300;
   font-size: 12px; border-radius: 10px; text-align: center;
 }
+
+/* ---------------------------------------------------------------- CH06 订单选择器 / 退款单 */
+.order-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; max-width: 380px; }
+.order-hint { font-size: 12px; color: #86909c; }
+.order-card {
+  text-align: left; padding: 10px 12px; border-radius: 10px; border: 1px solid #e5e6eb;
+  background: #fff; cursor: pointer; line-height: 1.5;
+}
+.order-card:hover:not(:disabled) { border-color: #3370ff; background: #f7faff; }
+.order-card:disabled { cursor: default; opacity: .7; }
+.order-card.picked { border-color: #3370ff; background: #f2f6ff; opacity: 1; }
+.order-top { font-size: 13px; font-weight: 600; color: #1f2329; }
+.order-mid { font-size: 13px; color: #4e5969; }
+.order-bottom { font-size: 12px; color: #86909c; }
+
+.refund-form {
+  display: flex; flex-direction: column; gap: 8px; align-self: flex-start;
+  padding: 12px 14px; border-radius: 10px; border: 1px solid #c9d8ff;
+  background: #f7faff; max-width: 320px;
+}
+.refund-title { font-size: 13px; font-weight: 600; color: #1f2329; }
+.refund-form label { font-size: 12px; color: #4e5969; display: flex; flex-direction: column; gap: 4px; }
+.refund-form select {
+  padding: 6px 8px; border-radius: 8px; border: 1px solid #d0d3d9; background: #fff; font-size: 13px;
+}
+.refund-actions { display: flex; gap: 8px; }
+.action-btn.primary { background: #3370ff; color: #fff; border-color: #3370ff; }
+.action-btn.primary:hover:not(:disabled) { background: #2860e1; }

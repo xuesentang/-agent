@@ -13,6 +13,7 @@ from app.agent.intent import (
     ROUTE_CHITCHAT,
     ROUTE_COMPLAINT,
     ROUTE_KNOWLEDGE,
+    ROUTE_REFUND,
     classify_intent,
     parse_intent,
     route_of,
@@ -35,19 +36,23 @@ class FakeIntentModel:
         return AIMessage(content=self._content)
 
 
-def test_seven_intents_map_to_four_routes():
+def test_eight_intents_map_to_five_routes():
     assert set(INTENT_ROUTES) == set(INTENTS)
-    assert len(INTENTS) == 7
+    assert len(INTENTS) == 8  # 七类 + 「其他」兜底(CH06 第 4 点)
     assert set(INTENT_ROUTES.values()) == {
         ROUTE_KNOWLEDGE,
         ROUTE_BUSINESS,
         ROUTE_COMPLAINT,
         ROUTE_CHITCHAT,
+        ROUTE_REFUND,
     }
-    # 知识类只放这两个:它们才需要「先检索政策再说」
-    assert [k for k, v in INTENT_ROUTES.items() if v == ROUTE_KNOWLEDGE] == ["商品咨询", "退款退货"]
+    # 商品咨询走知识口(检索 → 闸 → Agent)
+    assert [k for k, v in INTENT_ROUTES.items() if v == ROUTE_KNOWLEDGE] == ["商品咨询"]
+    # 退款退货与售后合到退款子流程(CH06 第 5 点:先拿订单数据 + 强制检索政策)
+    assert [k for k, v in INTENT_ROUTES.items() if v == ROUTE_REFUND] == ["退款退货", "售后"]
     assert [k for k, v in INTENT_ROUTES.items() if v == ROUTE_COMPLAINT] == ["投诉"]
     assert [k for k, v in INTENT_ROUTES.items() if v == ROUTE_CHITCHAT] == ["闲聊"]
+    assert INTENT_ROUTES["其他"] == ROUTE_BUSINESS
 
 
 def test_unknown_intent_falls_back_to_business():
@@ -74,7 +79,7 @@ def test_partial_intent_word_is_matched():
 @pytest.mark.parametrize("bad", ["", "不是 JSON", '{"intent":"","confidence":0.5}', '{"foo":1}'])
 def test_unparsable_falls_back_without_raising(bad):
     r = parse_intent(bad)
-    assert r.intent == FALLBACK_INTENT
+    assert r.intent == FALLBACK_INTENT == "其他"
     assert r.route == ROUTE_BUSINESS
     assert r.fallback is True
 
@@ -88,7 +93,7 @@ def test_confidence_is_clamped():
 async def test_classify_uses_model_output():
     r = await classify_intent("我的鞋开胶了能退吗", model=FakeIntentModel('{"intent":"退款退货","confidence":0.88}'))
     assert r.intent == "退款退货"
-    assert r.route == ROUTE_KNOWLEDGE
+    assert r.route == ROUTE_REFUND
 
 
 async def test_classify_survives_model_error():
@@ -111,3 +116,22 @@ async def test_history_is_attached_only_when_given():
     model2 = FakeIntentModel('{"intent":"闲聊","confidence":0.5}')
     await classify_intent("那它呢", model=model2)
     assert "最近对话" not in model2.prompts[0]
+
+
+async def test_history_accepts_langchain_messages():
+    """真链路上 history 是 trim_history 产出的消息对象,不是 dict。
+
+    这条是回归测试:第 6 章验收时线上报 'HumanMessage' object has no attribute 'get',
+    因为这里只按 dict 取。单测一直喂 dict,所以没拦住。
+    """
+    from langchain_core.messages import HumanMessage
+
+    model = FakeIntentModel('{"intent":"订单","confidence":0.9}')
+    await classify_intent(
+        "那个多少钱",
+        model=model,
+        history=[HumanMessage(content="订单 1001 买的是什么"), AIMessage(content="我帮您查一下")],
+    )
+    prompt = model.prompts[0]
+    assert "最近对话" in prompt
+    assert "订单 1001 买的是什么" in prompt

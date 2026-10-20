@@ -11,6 +11,12 @@
 分工很明确:**能确定的事写进图**(分流、检索、过闸、兜底),**不确定的事才交给模型**
 (判意图、决定调哪个工具、组织语言)。图是骨架,Agent 是骨架里的一个节点——不是反过来。
 
+CH06 在这张骨架上加了三处:
+- 指代消解不再是透传,和问法归一合成一次模型调用(`query_understanding`);
+- 退款退货与售后从「知识类」拆出独立出口 `refund_subflow`:订单事实 + 多路政策检索 + 闸,
+  只把「这一单能不能退」交给 Agent;
+- 缺订单号时流程停在 `order_select` 态,把候选订单卡片交前端点选,不让模型猜单号。
+
 节点保持纯函数:不碰数据库、不碰 SSE。它们只读写 State,把要推给前端的东西扔进
 `get_stream_writer()`,把要落库的东西留在 State 里让服务层去写。这样每个节点都能
 单独 ainvoke 测,不必先起一个服务。
@@ -34,9 +40,14 @@ from app.agent.intent import (
     ROUTE_CHITCHAT,
     ROUTE_COMPLAINT,
     ROUTE_KNOWLEDGE,
+    ROUTE_REFUND,
     classify_intent,
 )
+from app.agent.query_understanding import understand_query
 from app.agent.react import run_react
+from app.agent.refund_flow import NEED_ORDER_REPLY, prepare_refund
+from app.core.mock_orders import candidate_orders
+from app.core.tools.executor import ToolExecutor
 from app.rag.citations import build_citations, format_evidence
 from app.rag.retriever import retrieve
 from app.rag.selfcheck import ABSTAIN_REPLY
@@ -59,6 +70,7 @@ CHITCHAT_REPLY = (
 
 # 两个动作互不绑定:前端各渲染一个按钮,后端只给建议、不自动执行(第 8 点)
 ACTION_TRANSFER = {"id": "transfer_human", "label": "转人工"}
+ACTION_REFUND = {"id": "apply_refund", "label": "申请退款"}
 ACTION_TICKET = {"id": "create_ticket", "label": "建工单"}
 ESCALATION_ACTIONS = [ACTION_TRANSFER, ACTION_TICKET]
 
@@ -69,12 +81,23 @@ class AgentState(TypedDict, total=False):
     # 输入
     user_input: str
     history: list[BaseMessage]  # 服务层注入的裁剪后历史(每轮覆盖,不用 reducer)
+    user_key: str  # 用户键(session_id),用于取「这个人的近期订单」
+    order_id: str  # 前端点选订单卡片回填的槽位
+    # 理解层
+    canonical_query: str
+    understanding_changed: bool
+    understanding_fallback: bool
+    slot_order_id: str
     # 分流
     resolved_query: str
     intent: str
     intent_confidence: float
     intent_fallback: bool
     route: str
+    # 退款子流程
+    order_facts: str
+    order_options: list[dict]
+    route_queries: list[str]  # 扩写出来的检索查询(留痕用)
     # 检索与闸
     citations: list[dict]
     top_score: float
@@ -101,6 +124,8 @@ class AgentDeps:
     session_factory: object
     intent_model: object | None = None
     check_model: object | None = None
+    understand_model: object | None = None  # 指代消解 + 问法归一
+    expand_model: object | None = None  # 查询扩写
     retriever: object | None = None
     kb_min_score: float = 0.45
     max_steps: int = 4
@@ -129,11 +154,34 @@ def build_agent_graph(deps: AgentDeps):
 
     # ------------------------------------------------------------ 节点
     async def resolve_reference(state: AgentState) -> dict:
-        """指代消解:本章原样透传(CH06 换成真实现,节点位置不变)。"""
+        """指代消解 + 问法归一(一次调用),顺带抽订单号槽位。
+
+        问题已经完整时原样透传——改写不是目的,把一句好问题揉一遍只会让检索更差。
+        """
         _emit_node("resolve_reference", "enter")
-        query = state.get("user_input", "")
+        raw = state.get("user_input", "")
+        understood = await understand_query(
+            raw, history=state.get("history") or [], model=deps.understand_model
+        )
+        # 前端点选订单卡片回填的槽位优先于模型抽出来的
+        slot = state.get("order_id") or understood.order_id
         _emit_node("resolve_reference", "exit")
-        return {"resolved_query": query}
+        _emit(
+            {
+                "kind": "resolved",
+                "resolved": understood.resolved,
+                "canonical": understood.canonical,
+                "changed": understood.changed,
+                "order_id": slot,
+            }
+        )
+        return {
+            "resolved_query": understood.resolved,
+            "canonical_query": understood.canonical,
+            "understanding_changed": understood.changed,
+            "understanding_fallback": understood.fallback,
+            "slot_order_id": slot or "",
+        }
 
     async def classify(state: AgentState) -> dict:
         _emit_node("classify_intent", "enter")
@@ -152,7 +200,7 @@ def build_agent_graph(deps: AgentDeps):
     async def retrieve_knowledge(state: AgentState) -> dict:
         """知识类强制检索:这一步是确定性编排的核心,绕过它就没有证据。"""
         _emit_node("retrieve_knowledge", "enter")
-        query = state.get("resolved_query", "")
+        query = state.get("canonical_query") or state.get("resolved_query", "")
         hits = []
         try:
             hits = await retrieve(
@@ -195,11 +243,67 @@ def build_agent_graph(deps: AgentDeps):
             "gate_detail": result.detail,
         }
 
+    async def refund_subflow(state: AgentState) -> dict:
+        """退款/售后:订单事实 + 多路政策检索 + 闸。缺订单号就在这里停住出选择器。"""
+        _emit_node("refund_subflow", "enter")
+        prep = await prepare_refund(
+            state.get("canonical_query") or state.get("resolved_query", ""),
+            order_id=state.get("slot_order_id") or None,
+            registry=deps.registry,
+            executor=ToolExecutor(deps.registry),
+            session_factory=deps.session_factory,
+            retriever=deps.retriever,
+            expand_model=deps.expand_model,
+            check_model=deps.check_model,
+            min_score=deps.kb_min_score,
+        )
+        _emit_node("refund_subflow", "exit")
+
+        if prep.need_order:
+            options = [
+                o.to_payload() for o in candidate_orders(state.get("user_key") or "anonymous", limit=3)
+            ]
+            _emit({"kind": "order_options", "orders": options})
+            _emit_token(NEED_ORDER_REPLY)
+            return {
+                "order_options": options,
+                "reply": NEED_ORDER_REPLY,
+                "finish_reason": "need_order",
+                "actions": [],
+                "gate_passed": None,
+            }
+
+        citations = [c.to_payload() for c in prep.citations]
+        gate = prep.gate
+        _emit(
+            {
+                "kind": "gate",
+                "passed": bool(gate and gate.passed),
+                "reason": gate.reason if gate else "no_gate",
+                "top_score": round(gate.top_score, 4) if gate else 0.0,
+            }
+        )
+        return {
+            "order_facts": prep.order_facts,
+            "citations": citations,
+            "top_score": citations[0]["score"] if citations else 0.0,
+            "gate_passed": bool(gate and gate.passed),
+            "gate_reason": gate.reason if gate else "",
+            "gate_detail": gate.detail if gate else "",
+            "route_queries": prep.queries,
+        }
+
     async def agent(state: AgentState) -> dict:
         """主力 Agent:ReAct 循环,工具复用第 2 章那五个。"""
         _emit_node("agent", "enter")
         citations = citations_from_payload(state.get("citations") or [])
-        evidence = format_evidence(citations) if citations else ""
+        policies = format_evidence(citations) if citations else ""
+        order_facts = state.get("order_facts") or ""
+        evidence = ""
+        if order_facts:
+            evidence += f"【订单事实】\n{order_facts}\n\n"
+        if policies:
+            evidence += f"【政策条款】\n{policies}"
         writer = get_stream_writer()
         outcome = await run_react(
             state.get("resolved_query", ""),
@@ -212,6 +316,9 @@ def build_agent_graph(deps: AgentDeps):
             writer=writer,
         )
         _emit_node("agent", "exit")
+        # 退款子流程里已经拿到订单事实 = 这一单能走到「申请退款」这一步,给个入口;
+        # 是否真的可退由 Agent 的回答说明,按钮只是把动作递到用户手上
+        actions = [ACTION_REFUND] if state.get("route") == ROUTE_REFUND and state.get("order_facts") else []
         return {
             "reply": outcome.reply,
             "finish_reason": "stop",
@@ -219,7 +326,7 @@ def build_agent_graph(deps: AgentDeps):
             "steps": outcome.model_calls,
             "tokens": outcome.tokens,
             "stopped_by": outcome.stopped_by,
-            "actions": [],
+            "actions": actions,
         }
 
     async def abstain(state: AgentState) -> dict:
@@ -278,10 +385,17 @@ def build_agent_graph(deps: AgentDeps):
         route = state.get("route") or ROUTE_BUSINESS
         return {
             ROUTE_KNOWLEDGE: "retrieve_knowledge",
+            ROUTE_REFUND: "refund_subflow",
             ROUTE_COMPLAINT: "complaint_reply",
             ROUTE_CHITCHAT: "chitchat_reply",
             ROUTE_BUSINESS: "agent",
         }.get(route, "agent")
+
+    def route_after_refund(state: AgentState) -> str:
+        """缺订单号就停在这里等用户点选;材料备齐才放行给 Agent。"""
+        if state.get("finish_reason") == "need_order":
+            return "log_trace"
+        return "agent" if state.get("gate_passed") else "abstain"
 
     def route_after_gate(state: AgentState) -> str:
         return "agent" if state.get("gate_passed") else "abstain"
@@ -291,6 +405,7 @@ def build_agent_graph(deps: AgentDeps):
     graph.add_node("resolve_reference", resolve_reference)
     graph.add_node("classify_intent", classify)
     graph.add_node("retrieve_knowledge", retrieve_knowledge)
+    graph.add_node("refund_subflow", refund_subflow)
     graph.add_node("confidence_gate", confidence_gate)
     graph.add_node("agent", agent)
     graph.add_node("abstain", abstain)
@@ -303,10 +418,13 @@ def build_agent_graph(deps: AgentDeps):
     graph.add_conditional_edges(
         "classify_intent",
         route_after_intent,
-        ["retrieve_knowledge", "agent", "complaint_reply", "chitchat_reply"],
+        ["retrieve_knowledge", "refund_subflow", "agent", "complaint_reply", "chitchat_reply"],
     )
     graph.add_edge("retrieve_knowledge", "confidence_gate")
     graph.add_conditional_edges("confidence_gate", route_after_gate, ["agent", "abstain"])
+    graph.add_conditional_edges(
+        "refund_subflow", route_after_refund, ["agent", "abstain", "log_trace"]
+    )
     for terminal in ("agent", "abstain", "complaint_reply", "chitchat_reply"):
         graph.add_edge(terminal, "log_trace")
     graph.add_edge("log_trace", END)

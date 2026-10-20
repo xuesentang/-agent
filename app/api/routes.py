@@ -11,6 +11,7 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent.refund_flow import REFUND_REASONS
 from app.core.tools.business_tools import build_default_registry
 from app.core.tools.context import current_conversation_id
 from app.core.tools.executor import ToolExecutor
@@ -40,6 +41,8 @@ class ChatRequest(BaseModel):
     # 只把前端 conversation_id 清成 null 并不够——服务端 None 的语义是复用)。
     conversation_id: int | None = None
     new_conversation: bool = False
+    # CH06: 前端点选订单卡片后回填的订单号;有它就不再弹选择器
+    order_id: str | None = None
 
     @field_validator("session_id")
     @classmethod
@@ -73,6 +76,22 @@ class TransferRequest(BaseModel):
     conversation_id: int
 
 
+class RefundApplyRequest(BaseModel):
+    """退款单:用户在前端表单里选好原因才提交。原因必须来自固定类目。"""
+
+    conversation_id: int
+    order_id: str = Field(min_length=1)
+    reason: str
+    description: str | None = None
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_be_known(cls, value: str) -> str:
+        if value not in REFUND_REASONS:
+            raise ValueError(f"退款原因必须在固定类目内:{'、'.join(REFUND_REASONS)}")
+        return value
+
+
 class TicketRequest(BaseModel):
     """建工单:用户点按钮才发。描述缺省取会话里最近一条用户消息。"""
 
@@ -91,6 +110,7 @@ async def chat_stream(
         request.message,
         request.conversation_id,
         new_conversation=request.new_conversation,
+        order_id=request.order_id,
         session=session,
     ):
         yield event
@@ -181,4 +201,66 @@ async def create_ticket_from_action(
         "ticket_type": request.ticket_type,
         "description": description,
         "message": result.content,
+    }
+
+
+@router.get("/refund/reasons")
+async def refund_reasons() -> dict[str, Any]:
+    """固定退款原因类目:前端下拉用,后端是唯一来源(不写死在前端)。"""
+    return {"reasons": list(REFUND_REASONS)}
+
+
+@router.post("/refund/apply")
+async def apply_refund(
+    request: RefundApplyRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """提交退款单:受理即建一张「售后」工单,工单号就是受理单号。
+
+    本章不做退款状态机(提示词没要求,建表语句本章也是空的):真实系统里退款单要落
+    单独的明细表并驱动审核流;这里用售后工单承接,保证「用户提交了、有单号可查」。
+    """
+    conv = await session.get(Conversation, request.conversation_id)
+    if conv is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    description = (request.description or "").strip() or (
+        f"订单 {request.order_id} 申请退款,原因:{request.reason}"
+    )
+    registry = build_default_registry()
+    executor = ToolExecutor(registry)
+    token = current_conversation_id.set(conv.id)
+    try:
+        result = await executor.execute(
+            {
+                "name": "create_ticket",
+                "args": {"description": description, "ticket_type": "售后"},
+                "id": f"refund-{uuid.uuid4().hex[:8]}",
+                "type": "tool_call",
+            }
+        )
+    finally:
+        current_conversation_id.reset(token)
+
+    if not result.ok:
+        raise HTTPException(status_code=502, detail=result.content)
+
+    match = _TICKET_NO.search(result.content)
+    refund_no = match.group(1) if match else None
+    reply = (
+        f"已收到您的退款申请(受理单号 {refund_no or '已受理'}):订单 {request.order_id},原因「{request.reason}」。"
+        "审核结果会同步给到您,期间不用重复提交。"
+    )
+    try:
+        await message_repo.add_message(session, conv.id, role="assistant", content=reply)
+    except Exception as exc:  # noqa: BLE001 - 留痕失败不影响受理
+        logger.warning("退款受理留痕失败:%s", exc)
+
+    logger.info("agent.refund_applied conversation_id=%s order_id=%s", conv.id, request.order_id)
+    return {
+        "status": "submitted",
+        "refund_no": refund_no,
+        "order_id": request.order_id,
+        "reason": request.reason,
+        "message": reply,
     }
