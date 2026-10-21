@@ -23,7 +23,9 @@ const convListEl = document.getElementById("conv-list");
 // 会话标识:session_id 是用户键(同一浏览器连续聊);conversation_id 由服务端
 // done 事件回传。新会话按钮置 pendingNewConversation——下一条消息带
 // new_conversation=true 让服务端真新建(服务端 None 的语义是复用)。
-let sessionId = localStorage.getItem("kefu_session_id");
+// `?user=xxx` 可覆盖用户键:换条会话看历史、复现某个 user_key 的问题时不用清缓存。
+const userOverride = new URLSearchParams(location.search).get("user");
+let sessionId = userOverride || localStorage.getItem("kefu_session_id");
 if (!sessionId) {
   sessionId = "web-" + (crypto.randomUUID ? crypto.randomUUID() : Date.now());
   localStorage.setItem("kefu_session_id", sessionId);
