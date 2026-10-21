@@ -512,6 +512,31 @@ function renderSources(turn) {
 
 /* ---------------------------------------------------------------- 反馈 */
 
+// CH09：👎 要接后端（落进低置信度问题池），所以把「当轮原话 + 当轮召回结果」
+// 一起带上去——后端拿它存召回快照，审核人靠快照判断是知识缺了还是没检到。
+function sendFeedback(turn, rating) {
+  const payload = {
+    conversation_id: turn.conversationId || conversationId || null,
+    question: turn.question || lastUserMessage || "",
+    rating,
+    citations: (turn.citations || []).map((c) => ({
+      n: c.n,
+      chunk_id: c.chunk_id,
+      section_path: c.section_path,
+      score: c.score,
+      snippet: c.answer,
+    })),
+  };
+  if (!payload.question) return; // 没有原话就没法入池，也没法统计
+  fetch("/api/v1/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch(() => {
+    // 反馈失败不打扰用户：他点的是「有没有帮助」，不是「提交表单」
+  });
+}
+
 function renderFeedback(turn) {
   if (turn.feedback.childElementCount) return; // 已渲染过
   const wrap = document.createElement("div");
@@ -539,6 +564,7 @@ function renderFeedback(turn) {
     other.disabled = true;
     wrap.dataset.rating = value;
     done.hidden = false; // 一次性锁定:点过就不能再改
+    sendFeedback(turn, value);
   }
   up.addEventListener("click", () => pick(up, down, "up"));
   down.addEventListener("click", () => pick(down, up, "down"));
@@ -597,6 +623,7 @@ function handleEvent(event, data, turn) {
       break;
     case "done":
       conversationId = data.conversation_id;
+      turn.conversationId = data.conversation_id;
       loadConversations(); // 新会话会出现在侧栏
       if (data.finish_reason === "abstain") turn.bubble.classList.add("abstained");
       renderActions(turn, data.actions);
@@ -722,6 +749,7 @@ async function sendMessage(text, orderId) {
   addUserBubble(text);
   sendBtn.disabled = true;
   const turn = addAssistantTurn();
+  turn.question = text; // CH09：👎 时要带当轮原话入池
 
   try {
     const resp = await fetch("/api/v1/chat/stream", {

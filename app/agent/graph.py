@@ -111,6 +111,7 @@ class AgentState(TypedDict, total=False):
     gate_passed: bool
     gate_reason: str
     gate_detail: str
+    gate_confidence: float  # CH09:三信号合成的置信度,与 top_score 一起留作复盘
     # 产物
     reply: str
     finish_reason: str
@@ -135,6 +136,7 @@ class AgentDeps:
     expand_model: object | None = None  # 查询扩写
     retriever: object | None = None
     kb_min_score: float = 0.45
+    min_confidence: float = 0.45  # CH09: 三信号合成的置信度阈值(校准结论见 config)
     max_steps: int = 4
     token_budget: int = 6000
     checkpointer: object = field(default_factory=InMemorySaver)
@@ -284,6 +286,7 @@ def build_agent_graph(deps: AgentDeps):
             state.get("resolved_query", ""),
             citations,
             min_score=deps.kb_min_score,
+            min_confidence=deps.min_confidence,
             model=deps.check_model,
         )
         _emit_node("confidence_gate", "exit")
@@ -293,10 +296,12 @@ def build_agent_graph(deps: AgentDeps):
                 "passed": result.passed,
                 "reason": result.reason,
                 "top_score": round(result.top_score, 4),
+                "confidence": round(result.confidence, 4),
             }
         )
         return {
             "gate_passed": result.passed,
+            "gate_confidence": round(result.confidence, 4),
             "gate_reason": result.reason,
             "gate_detail": result.detail,
         }

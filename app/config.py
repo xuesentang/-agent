@@ -48,9 +48,17 @@ class Settings(BaseSettings):
     judge_base_url: str = ""
     judge_api_key: str = ""
     # CH05: 工作流编排 — 知识类问题的置信度闸阈值与主力 Agent 的停止条件。
-    # kb_min_score 是 dense 相似度的粗筛线:实测 357 块库上库内问题 0.49~0.78、
-    # 库外 0.38~0.62 且有重叠,阈值只能挡明显离题的,精确判定交给证据自评。
+    # kb_min_score 是「算不算一条有效证据」的门槛(ch09 起) — 实测 357 块库上库内问题
+    # 0.49~0.78、库外 0.38~0.62 且有重叠,单值分不开「沾边」和「答得上」,
+    # 所以它只用来数有效证据条数,真正的判定看下面的 evidence_min_confidence。
     kb_min_score: float = 0.45
+    # CH09: 三信号合成的置信度阈值(0.60*top1 + 0.25*有效证据数 + 0.15*分差)。
+    # 0.45 是 scripts/calibrate_gate.py 在 ch04 评估集上扫出来的:正例误杀 6.5%(4/62)、
+    # 负例拦下 78.6%(11/14),报告见 reports/ch09_gate_calibration.md。
+    # 被误杀的 4 条全是噪声变体(错别字/型号写法不同),31 条干净题零误杀——
+    # 闸对拼写不鲁棒,根子在检索那一段,不在闸本身。
+    # 改这个值等于改「多容易被拒答」,别凭手感调。
+    evidence_min_confidence: float = 0.45
     agent_max_steps: int = 4
     agent_token_budget: int = 6000
     # CH07: 上下文管理 — 预算从窗口倒推,不写死历史长度。
@@ -86,6 +94,11 @@ class Settings(BaseSettings):
     topic_threshold: float = 0.20
     # 攒够一批归一次:脚本每次最多取这么多条未归类问题
     topic_batch_size: int = 50
+    # CH09: 评估流水线(默认关)。跑一轮要加载嵌入 + 重排模型,开发台不该常驻 4G。
+    eval_pipeline_enabled: bool = False
+    eval_pipeline_interval_hours: int = 24
+    # 用哪份用例跑:ch04 那份是唯一有分桶与权重的完整检索集
+    eval_cases_path: str = "tests/eval/ch04_cases.jsonl"
 
 
 @lru_cache

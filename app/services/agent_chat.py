@@ -23,7 +23,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.types import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent.gate import REASON_NO_HITS, REASON_SCORE_LOW
+from app.agent.gate import REASON_CONFIDENCE_LOW, REASON_NO_HITS, REASON_SCORE_LOW
 from app.agent.graph import AgentDeps, build_agent_graph
 from app.config import get_settings
 from app.core.context import HistoryItem, LayerPlan, plan_layers, render_history_ctx
@@ -35,9 +35,9 @@ from app.models.message import Message
 from app.repositories import (
     conversation_repo,
     conversation_summary_repo,
-    low_confidence_repo,
     message_repo,
 )
+from app.services import flywheel, usage_service
 from app.services.tool_chat import _get_lock, _sanitize, _to_langchain
 
 logger = logging.getLogger(__name__)
@@ -145,6 +145,8 @@ def _custom_to_sse(data: dict) -> ServerSentEvent | None:
                 "passed": data.get("passed"),
                 "reason": data.get("reason", ""),
                 "top_score": data.get("top_score", 0.0),
+                # CH09:三信号合成的置信度。top_score 是旧口径,两个都给便于对照
+                "confidence": data.get("confidence", 0.0),
             },
         )
     if kind == "interrupt":
@@ -244,6 +246,7 @@ def build_default_deps(session_factory) -> AgentDeps:
         understand_model=get_extract_model(),
         expand_model=get_extract_model(),
         kb_min_score=settings.kb_min_score,
+        min_confidence=settings.evidence_min_confidence,
         max_steps=settings.agent_max_steps,
         token_budget=settings.agent_token_budget,
         checkpointer=get_checkpointer(),
@@ -398,6 +401,20 @@ async def chat_with_agent(
             if budget is not None:
                 await _schedule_summary(session_factory, conv, plan, budget)
 
+            # CH09:按意图记 token 估算。旁路——写失败只记日志,不影响这一轮的答复
+            prompt_tokens, completion_tokens = usage_service.estimate_turn(
+                final_state, message=message
+            )
+            await usage_service.record_turn(
+                session,
+                intent=final_state.get("intent"),
+                route=final_state.get("route"),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                conversation_id=conv.id,
+                model=get_settings().llm_model,
+            )
+
             citations = final_state.get("citations") or []
             if not citations:
                 # 业务数据类没走预检索,但 Agent 自己调了 query_faq:引用走旁路拿回来
@@ -445,15 +462,18 @@ async def _persist_turn(session: AsyncSession, conversation_id: int, message: st
             await message_repo.add_message(session, conversation_id, role="assistant", content=reply)
         if state.get("finish_reason") == "abstain":
             reason = state.get("gate_reason") or ""
-            source = "retrieval_low_conf" if reason in (REASON_NO_HITS, REASON_SCORE_LOW) else "self_check"
+            source = "retrieval_low_conf" if reason in (REASON_NO_HITS, REASON_SCORE_LOW, REASON_CONFIDENCE_LOW) else "self_check"
             detail = state.get("gate_detail") or ""
             try:
-                await low_confidence_repo.add_question(
+                # CH09：入池统一走 flywheel.enqueue，并把当轮召回片段一起带上——
+                # 审核人靠快照判断「知识库真缺」还是「有但没检到」
+                await flywheel.enqueue(
                     session,
                     raw_question=state.get("resolved_query") or message,
                     source=source,
                     reason=(f"{reason}: {detail}"[:255] if detail else reason or None),
                     conversation_id=conversation_id,
+                    snapshot=flywheel.sanitize_snapshot(state.get("citations") or []),
                 )
             except Exception as exc:  # noqa: BLE001 - 入池失败不影响答复
                 logger.warning("低置信度问题入池失败:%s", exc)

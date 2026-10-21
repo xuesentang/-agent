@@ -164,6 +164,62 @@ async def chat_extract(request: ExtractRequest) -> dict[str, Any]:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+class FeedbackRequest(BaseModel):
+    """聊天页的 👍/👎（ch09 起接后端）。
+
+    `question` 是用户当轮原话（前端 `turn.question`）；`citations` 是那一轮的召回结果，
+    前端手上就有，直接回传胜过在库里加列——用户只能对刚看到的回答点 👎。
+    """
+
+    conversation_id: int | None = None
+    question: str = Field(min_length=1)
+    rating: Literal["up", "down"]
+    citations: list[dict] | None = None
+
+    @field_validator("question")
+    @classmethod
+    def question_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("question must not be blank")
+        return value
+
+
+@router.post("/feedback")
+async def submit_feedback(
+    request: FeedbackRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """👎 把这条问题落进低置信度问题池（需求 3 的第三个入口）。
+
+    👍 不入池——「答得好」不是知识缺口。但它也不该被丢掉，所以照常返回 ok，
+    只是 `pooled=False`；将来要做满意度统计，加一张表就行，这里不假装做了。
+    """
+    from app.models.conversation import Conversation
+    from app.services import flywheel
+
+    if request.rating == "up":
+        return {"ok": True, "pooled": False, "reason": "点赞不入池"}
+
+    conversation_id = request.conversation_id
+    if conversation_id is not None and await session.get(Conversation, conversation_id) is None:
+        conversation_id = None  # 会话被清了也别让反馈报错
+
+    row = await flywheel.enqueue(
+        session,
+        raw_question=request.question,
+        source=flywheel.SOURCE_USER_FEEDBACK,
+        reason="user_feedback",
+        conversation_id=conversation_id,
+        snapshot=flywheel.sanitize_snapshot(request.citations),
+    )
+    return {
+        "ok": True,
+        "pooled": row is not None,
+        "question_id": row.id if row else None,
+        "snapshot_size": len(row.retrieved_chunks or []) if row else 0,
+    }
+
+
 @router.post("/chat/actions/transfer")
 async def transfer_to_human(
     request: TransferRequest,

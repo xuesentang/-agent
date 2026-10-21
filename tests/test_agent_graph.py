@@ -198,13 +198,15 @@ async def test_knowledge_route_must_retrieve_then_pass_gate(patch_retrieve):
     assert "运费" in out["reply"] or model.calls == 1
 
 
-async def test_knowledge_route_abstains_when_score_low(patch_retrieve):
+async def test_knowledge_route_abstains_when_confidence_low(patch_retrieve):
     patch_retrieve["scores"] = (0.39,)
     deps, model, check = _deps(intent="商品咨询")
     app = build_agent_graph(deps)
     out = await app.ainvoke({"user_input": "帮我写首诗"}, {"configurable": {"thread_id": "t1"}})
     assert out["gate_passed"] is False
-    assert out["gate_reason"] == "score_low"
+    # ch09 起闸判的是三信号合成的 confidence,原因码随之换掉
+    assert out["gate_reason"] == "confidence_low"
+    assert out["gate_confidence"] < deps.min_confidence
     assert out["reply"] == ABSTAIN_REPLY
     assert out["finish_reason"] == "abstain"
     assert model.calls == 0  # 闸挡住就不进 Agent

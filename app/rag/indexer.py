@@ -98,6 +98,59 @@ def to_knowledge_chunks(
     return out
 
 
+@dataclass
+class VectorizeReport:
+    vectorized: int = 0
+    batches: int = 0
+    interrupted: bool = False
+
+
+async def vectorize_pending(
+    session,
+    store,
+    embedder,
+    *,
+    batch_size: int = 32,
+    stop_after_batches: int | None = None,
+    report: VectorizeReport | None = None,
+) -> VectorizeReport:
+    """双写第二步:捞 pending → embed → upsert → 回填 done。
+
+    从 `build_index` 里抽出来的原因:ch09 审核通过也要写知识库,而「写知识库」
+    的唯一正确姿势就是这条双写流程(建 pending → 向量化 → 回填)。复制一份
+    逻辑到飞轮里迟早会走偏,所以抽成函数,两边调同一个。
+
+    `report` 传进来就地累加:中断抛异常时调用方仍能看到已经处理了多少。
+    """
+    report = report or VectorizeReport()
+    while True:
+        pending = await knowledge_repo.get_pending(session, limit=batch_size)
+        if not pending:
+            break
+        vectors = embedder.embed_texts([c.embedding_text() for c in pending])
+        store.upsert(
+            [
+                {
+                    "chunk_id": c.id,
+                    "embedding": v,
+                    # text 供 BM25 索引(关键词召回那一路),category 供元数据过滤;
+                    # 两者都随块一起写,避免二次回表。
+                    "text": c.embedding_text(),
+                    "category": c.category or "",
+                }
+                for c, v in zip(pending, vectors)
+            ]
+        )
+        for chunk in pending:
+            await knowledge_repo.mark_done(session, chunk.id, str(chunk.id))
+        report.vectorized += len(pending)
+        report.batches += 1
+        if stop_after_batches is not None and report.batches >= stop_after_batches:
+            report.interrupted = True
+            raise BuildInterrupted(f"中断于第 {report.batches} 批(剩 pending 待重跑补齐)")
+    return report
+
+
 # ---------------------------------------------------------------- 建库主流程
 
 
@@ -151,32 +204,20 @@ async def build_index(
             report.chunks_inserted = len(new_chunks)
 
     # 2. 捞 pending → embed → upsert → 回填 done(中断后重跑从此继续)
+    vr = VectorizeReport()
     async with session_factory() as session:
-        while True:
-            pending = await knowledge_repo.get_pending(session, limit=batch_size)
-            if not pending:
-                break
-            vectors = embedder.embed_texts([c.embedding_text() for c in pending])
-            store.upsert(
-                [
-                    {
-                        "chunk_id": c.id,
-                        "embedding": v,
-                        # text 供 BM25 索引(关键词召回那一路),category 供元数据过滤;
-                        # 两者都随块一起写,避免二次回表。
-                        "text": c.embedding_text(),
-                        "category": c.category or "",
-                    }
-                    for c, v in zip(pending, vectors)
-                ]
+        try:
+            await vectorize_pending(
+                session,
+                store,
+                embedder,
+                batch_size=batch_size,
+                stop_after_batches=stop_after_batches,
+                report=vr,
             )
-            for chunk in pending:
-                await knowledge_repo.mark_done(session, chunk.id, str(chunk.id))
-            report.chunks_vectorized += len(pending)
-            report.batches += 1
-            if stop_after_batches is not None and report.batches >= stop_after_batches:
-                report.interrupted = True
-                raise BuildInterrupted(
-                    f"中断于第 {report.batches} 批(剩 pending 待重跑补齐)"
-                )
+        finally:
+            # 中断也是「跑到哪了」的一部分,计数先搬进 report 再让异常往上走
+            report.chunks_vectorized = vr.vectorized
+            report.batches = vr.batches
+            report.interrupted = vr.interrupted
     return report

@@ -144,7 +144,7 @@ async def test_abstain_writes_pool_and_returns_actions(session, monkeypatch):
 
     rows = await low_confidence_repo.list_by_source(session, "retrieval_low_conf")
     assert len(rows) == 1
-    assert "score_low" in (rows[0].reason or "")
+    assert "confidence_low" in (rows[0].reason or "")
 
 
 async def test_selfcheck_block_goes_to_self_check_entry(session, monkeypatch):

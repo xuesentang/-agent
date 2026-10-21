@@ -8,7 +8,9 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
+from app.api.review import router as review_router
 from app.api.topics import router as topics_router
+from app.api.usage import router as usage_router
 from app.config import get_settings
 from app.logging_setup import configure_logging
 
@@ -39,6 +41,30 @@ async def _mine_qa_loop() -> None:
             logger.exception("mine_qa round failed")
 
 
+async def _eval_loop() -> None:
+    """评估流水线定时循环:EVAL_PIPELINE_ENABLED=true 时按 interval 跑一轮检索评估。
+
+    默认关:跑一轮要加载嵌入 + 重排模型(开发台 4G 内存的机器上不该常驻)。
+    单轮失败只记日志——定时任务的命比一次成败长,和 mine_qa 一个道理。
+    """
+    from app.db import get_sessionmaker
+    from app.services import eval_service
+
+    settings = get_settings()
+    interval = settings.eval_pipeline_interval_hours * 3600
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            result = await eval_service.run_round(
+                get_sessionmaker(),
+                cases_path=settings.eval_cases_path,
+                triggered_by="定时",
+            )
+            logger.info("eval round done: %s", result["metrics"])
+        except Exception:  # noqa: BLE001 - 定时任务单轮失败不拖垮服务
+            logger.exception("eval round failed")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
@@ -67,15 +93,29 @@ async def lifespan(_: FastAPI):
             settings.mine_qa_interval_hours,
             settings.mine_qa_batch_size,
         )
+    eval_task = None
+    if settings.eval_pipeline_enabled:
+        eval_task = asyncio.create_task(_eval_loop())
+        logger.info(
+            "eval pipeline started: every %dh, cases=%s",
+            settings.eval_pipeline_interval_hours,
+            settings.eval_cases_path,
+        )
     yield
     if task is not None:
         task.cancel()
+    if eval_task is not None:
+        eval_task.cancel()
 
 
 app = FastAPI(title="电商智能客服", version="0.3.0", lifespan=lifespan)
 app.include_router(router)
 # CH10:主题分布只读接口 + 后台页(/admin/topics)。旁路功能,注册与否不影响聊天链路。
 app.include_router(topics_router)
+# CH09:飞轮审核接口 + 后台页(/admin/review)。同样是旁路,不进聊天链路。
+app.include_router(review_router)
+# CH09:按意图的 token 估算统计(后台页顶部小卡片用)
+app.include_router(usage_router)
 # CH02: 聊天页(原生 HTML/JS,Vibe Coding 交付)。mount 在路由之后注册,
 # /api/v1 更具体先匹配,互不覆盖。
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

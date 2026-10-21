@@ -127,3 +127,31 @@ async def existing_chunk_keys(session: AsyncSession) -> set[tuple[str, str, str]
     """
     stmt = select(KnowledgeChunk.category, KnowledgeChunk.questions, KnowledgeChunk.answer)
     return set((await session.execute(stmt)).all())
+
+
+async def find_by_category_and_questions(
+    session: AsyncSession, category: str, questions: str
+) -> KnowledgeChunk | None:
+    """按 (分类, 问法) 找块——ch09 飞轮二次审核要「更新答案」而不是再插一行。
+
+    只用内容键的三分之一:分类和问法相同的两块在语义上就是同一个知识,
+    答案不同说明有人改过,该覆盖。建库那条路径不用它(那里要的是整条内容键)。
+    """
+    stmt = select(KnowledgeChunk).where(
+        KnowledgeChunk.category == category,
+        KnowledgeChunk.questions == questions,
+    )
+    return (await session.execute(stmt)).scalars().first()
+
+
+async def replace_answer(session: AsyncSession, chunk_id: int, answer: str) -> KnowledgeChunk | None:
+    """改答案并把状态退回 pending:向量里存的是旧文本,不重算等于改了个寂寞。"""
+    chunk = await session.get(KnowledgeChunk, chunk_id)
+    if chunk is None:
+        return None
+    chunk.answer = answer
+    chunk.vectorize_status = "pending"
+    chunk.vector_id = None
+    await session.commit()
+    await session.refresh(chunk)
+    return chunk

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>飞轮审核 · 小智后台</title>
+  <link rel="stylesheet" href="/admin/review/review.css" />
+</head>
+<body>
+  <header>
+    <div class="left">
+      <h1>飞轮审核</h1>
+      <span class="sub">低置信度问题 → 核准答案 → 回写知识库</span>
+    </div>
+    <div class="right">
+      <span id="queue-badge" class="badge">…</span>
+      <button id="refresh" type="button">刷新</button>
+      <a class="back" href="/admin/topics">主题分布 →</a>
+      <a class="back" href="/">← 回客服页</a>
+    </div>
+  </header>
+
+  <section class="panel" id="cards-panel">
+    <div class="cards" id="cards"></div>
+    <p class="card-note" id="cards-note"></p>
+  </section>
+
+  <section class="workspace">
+    <div class="panel">
+      <h2>待审队列 <span class="tip">按出现次数排</span></h2>
+      <div class="tabs" id="tabs">
+        <button type="button" class="tab active" data-status="待审">待审</button>
+        <button type="button" class="tab" data-status="通过">已通过</button>
+        <button type="button" class="tab" data-status="驳回">已驳回</button>
+      </div>
+      <div class="queue" id="queue"></div>
+    </div>
+
+    <div class="panel">
+      <div class="detail" id="detail">
+        <p class="empty">左边选一条缺口看详情。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>评估趋势 <span class="tip">最近几轮检索指标（旧 → 新）</span></h2>
+    <div class="trend" id="trend"></div>
+  </section>
+
+  <script src="/admin/review/review.js"></script>
+</body>
+</html>

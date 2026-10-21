@@ -24,9 +24,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -36,72 +34,26 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.core.prompts import CUSTOMER_SERVICE_TOOLS_SYSTEM_PROMPT
+from app.eval.metrics import (  # 指标口径抽到 app/eval/metrics.py（ch09 D7）
+    BUCKETS,
+    K5,
+    K10,
+    STRATEGIES,
+    TOP10_SHARE_WARN,
+    CaseResult,
+    load_cases,
+    mrr as _mrr,
+    rank_of as _rank,
+    recall as _recall,
+    weighted_mrr as _wmrr,
+    weighted_recall as _wrecall,
+)
 from app.rag.citations import build_citations, format_evidence
 from app.rag.embeddings import LocalBGEEmbedder
 from app.rag.reranker import LocalBGEReranker
 from app.rag.retriever import Retriever, retrieve
 from app.rag.selfcheck import check_evidence
 from app.rag.vectorstore import MilvusStore
-
-STRATEGIES = ("dense", "bm25", "hybrid", "hybrid_rerank")
-BUCKETS = ("A_policy", "B_model", "C_colloquial", "E_multi")
-K5, K10 = 5, 10
-TOP10_SHARE_WARN = 0.05  # Top-10 占全库超过 5% 就没有区分度
-
-
-@dataclass
-class CaseResult:
-    case_id: str
-    bucket: str
-    rank: int | None  # 第一条命中块的排名(1-based),None = 前 K 条都没命中
-    weight: int = 1
-    noise: bool = False
-    hits: list = field(default_factory=list)
-
-
-def load_cases(path: Path) -> list[dict]:
-    rows = [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    for r in rows:
-        r["weight"] = int(r.get("weight") or 1)
-    return rows
-
-
-def _rank(hits, expected_section: str) -> int | None:
-    for i, hit in enumerate(hits, start=1):
-        path = getattr(hit.chunk, "section_path", "") or ""
-        if expected_section and expected_section in path:
-            return i
-    return None
-
-
-def _recall(results: list[CaseResult], k: int) -> float:
-    if not results:
-        return 0.0
-    return sum(1 for r in results if r.rank is not None and r.rank <= k) / len(results)
-
-
-def _mrr(results: list[CaseResult]) -> float:
-    if not results:
-        return 0.0
-    return sum(1.0 / r.rank for r in results if r.rank is not None) / len(results)
-
-
-def _wrecall(results: list[CaseResult], k: int) -> float:
-    total = sum(r.weight for r in results)
-    if not total:
-        return 0.0
-    return sum(r.weight for r in results if r.rank is not None and r.rank <= k) / total
-
-
-def _wmrr(results: list[CaseResult]) -> float:
-    total = sum(r.weight for r in results)
-    if not total:
-        return 0.0
-    return sum(r.weight / r.rank for r in results if r.rank is not None) / total
 
 
 # ---------------------------------------------------------------- 生成段

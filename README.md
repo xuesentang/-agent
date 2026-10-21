@@ -1,6 +1,6 @@
 # 电商智能客服系统
 
-电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）+ CH07 会话上下文管理（三层结构、异步摘要、预算倒推、多会话侧栏）+ CH08 工具系统（注册中心、执行引擎、审计、MCP 接入、写操作确认流）+ CH10 微调主题分类器（RoBERTa-wwm-ext 17 类多标签、LLM 预标 + 人工抽审、旁路批量归类、主题分布页）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
+电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）+ CH07 会话上下文管理（三层结构、异步摘要、预算倒推、多会话侧栏）+ CH08 工具系统（注册中心、执行引擎、审计、MCP 接入、写操作确认流）+ CH09 数据飞轮（低置信度入池、标准化查重、人工审核回写知识库、评估趋势、按意图成本）+ CH10 微调主题分类器（RoBERTa-wwm-ext 17 类多标签、LLM 预标 + 人工抽审、旁路批量归类、主题分布页）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
 
 ## 功能
 
@@ -20,6 +20,14 @@
 | `GET /api/v1/topics/latest` | CH10 只读：最近归类的问题（原话 + 标签 + 时间） |
 | `GET /api/v1/topics/by-label` | CH10 只读：某类目下的问题；类目名不在 17 类里返回空列表而不是 500 |
 | `GET /admin/topics` | CH10 主题分布页：上排 17 类横向条形图（点一行看该类问题），下排最近归类列表 |
+| `POST /api/v1/feedback` | CH09：每条回答的 👍/👎。`up` 只回 ok；`down` 把原话 + 当轮召回快照落进低置信度池（`source=user_feedback`） |
+| `GET /api/v1/review/queue` | CH09 只读：待审缺口队列（按出现次数排）+ 三状态计数；空队列返回 200 与提示语 |
+| `GET /api/v1/review/{id}` | CH09 只读：缺口详情——标准化问题、AI 示例答案、归并进来的用户原话、当时的召回快照 |
+| `POST /api/v1/review/{id}/approve` | CH09：核准答案 → 走 CH03 双写落知识库（建 pending 块 → 嵌入 → upsert → done）→ 状态置通过 |
+| `POST /api/v1/review/{id}/reject` | CH09：驳回，只改状态不写库 |
+| `GET /api/v1/review/trend` | CH09 只读：最近 N 轮检索评估指标（`eval_runs`，旧 → 新） |
+| `GET /api/v1/usage/by-intent` | CH09 只读：按意图的 token 估算与占比（**估算值，不是账单**，响应里带 `token_source`） |
+| `GET /admin/review` | CH09 审核后台：左栏待审队列、右栏详情（原话 + 快照 + 核准答案输入）、下排评估趋势、顶部按意图成本卡片 |
 
 **RAG 进阶**（CH04）：
 
@@ -48,7 +56,17 @@
 - **MCP 接入**：两个自建 Server（物流 8121 / 售后 8122，Streamable HTTP）。清单按 TTL 拉一次缓存，失败保留上次清单——Server 挂了不该让整个客服瘫。Server 侧加工具只重启那一个 Server，客服服务不重启就能用上。
 - **写操作确认流**：`create_ticket` 走到执行引擎前先在图里挂住（`interrupt`），把类型 + 描述推成前端预览卡片；用户点「确认提交」→ `POST /chat/resume` → `Command(resume=...)` 接着跑。**没确认的写操作一律拒**，不给模型绕过去的机会；恢复后落库用的是用户卡片上看到的那份参数，不是模型重跑后的版本。
 
-**上下文管理**（CH07，`app/core/context.py` + `app/core/token_budget.py` + `app/services/summary_service.py`）：
+**数据飞轮**（CH09，`app/services/flywheel.py` + `app/services/eval_service.py`）：
+
+- **三个入口一个函数**：闸判弱、自评判不够、用户 👎 全走 `flywheel.enqueue()`。入池时把当轮召回片段裁到 5 条 × 120 字存成快照——审核人靠它判断「知识库真缺」还是「有但没检到」。裁剪在服务层做：前端回传的 citations 带着整段原文，且那是公网入口。
+- **标准化 + 两级查重**：一次 LLM 调用把原话改写成 FAQ 式问题并给一版示例答案；查重先规则（规范化后相等 / 互相包含且长度差 ≤40%），规则不命中才让模型判。规则前置的理由有数据：39 行池内数据只有 13 个不同问题，这类重复不该花模型调用。命中只累加 `occurrence_count`，原话行不删——靠 `matched_review_id` 反查「这条缺口由哪些真实问法贡献」。
+- **审核通过 = 走 CH03 双写**：建 `category=飞轮补充` 的块 → 向量化 → 回填 done，不许绕过去另写一份 embedding。二次审核同一缺口按 (分类, 问法) 找到原块改答案并把状态退回 pending（向量里存的是旧文本）。驳回只改状态。
+- **置信度闸升级为三信号**：`confidence = 0.60*top1 + 0.25*min(有效/3,1) + 0.15*min(分差/0.30,1)`。单值 top1 的老毛病是库内外分数重叠，分不开「沾边」和「答得上」；加上有效证据条数与 Top1-Top2 分差后，阈值由 `scripts/calibrate_gate.py` 在 ch04 评估集上扫出来（**0.45**：正例误杀 6.5%、负例拦下 78.6%），不是拍脑袋。
+- **评估趋势**：指标口径抽到 `app/eval/metrics.py`（脚本与流水线共用，算法没改），每轮写一行 `eval_runs`；定时开关 `EVAL_PIPELINE_ENABLED` 默认关——跑一轮要加载嵌入 + 重排模型。生成段（Faithfulness）默认不跑，`metrics.with_generation` 标着，趋势图上分开画。
+- **按意图成本**：`intent_usage` 每轮一行，`token_source=estimated`。真值拿不到——ReAct 循环把 `usage_metadata` 吃掉了，要采得改 CH02 核心链路，本章不动。所以文档里反复写：**能比「哪类烧钱」，不能当账单**。
+- **没做 Langfuse**：trace 树、节点耗时瀑布图这些留在需求第 1 条，本章只做不依赖它的部分（见「已知限制」）。
+
+
 
 - **三层结构**：最近的留原文（层 1）、中间按角色截短（层 2：用户原话不动、客服答复只留开头 40 字、工具结果换成一行标识）、最远的压成梗概（层 3）。切分靠 `conversations` 上两个锚点 `summary_upto_msg_id` / `layer1_from_msg_id`，**降级只挪 id、消息行永远不动**——否则切回旧会话就看不到原文了。
 - **预算从窗口倒推**：`history = window - system(实测) - 工具定义 - 证据 - 摘要 - 输出预留 - 用户输入预留 - ReAct 峰值 - 5% 安全余量`，再按 7:3 分层 1 / 层 2。参数全在 `.env`，不写死。
@@ -301,6 +319,49 @@ python scripts/tool_demo.py confirm --real-model
 
 `tool_demo.py` 默认落 CH07 那套开发库（`./data/ch07.db` + `./data/ch07_milvus.db`），需要覆盖就传 `DATABASE_URL` / `VECTOR_STORE_URI`。
 
+## 验收命令（CH09 五条标准）
+
+本章只做不依赖 Langfuse 的部分：需求第 1 条（trace 树）与第 2 条里的「元数据进 trace」未做，
+其余四条可跑可验。开发台一律用 SQLite + Milvus Lite，避开 `.env` 里的 MySQL：
+
+```bash
+export DATABASE_URL="sqlite+aiosqlite:///./data/ch07.db"
+export VECTOR_STORE_URI="./data/ch07_milvus.db"
+DATABASE_URL=$DATABASE_URL python scripts/migrate_ch09.py          # 建三张新表 + 池表补两列
+```
+
+```bash
+# ① 置信度闸阈值校准（真检索跑 ch04 评估集，76 条；CPU 重排约 22 分钟）
+python scripts/calibrate_gate.py
+# 期望: 报告 reports/ch09_gate_calibration.md
+#       选定阈值 0.45，正例误杀 6.5%（4/62，全是噪声变体）、负例拦下 78.6%（11/14）
+
+# ② 闸拦下 → 落池（带召回快照）
+curl -N -X POST localhost:8010/api/v1/chat/stream -H "Content-Type: application/json" \
+  -d '{"session_id":"acc","message":"W60 用的碳板是第几代","new_conversation":true}'
+# 期望: event: intent(route=knowledge) → gate(passed=false, reason=self_check)
+#       → 池里新增一行，retrieved_chunks 有 5 条快照
+
+# ③ 飞轮：标准化 + 查重 + 进待审（--dry-run 先看会新增几条缺口）
+python scripts/run_flywheel.py --batch 5 --dry-run
+python scripts/run_flywheel.py --batch 5 --since-id 39
+# 期望: 本轮：处理 N 条 / 新建缺口 x / 累加 y / 失败 z
+
+# ④ 审核通过 → 写知识库 → 再问能答对
+curl -s localhost:8010/api/v1/review/queue                       # 待审列表
+curl -s -X POST localhost:8010/api/v1/review/1/approve \
+  -H "Content-Type: application/json" -d '{"answer":"……核准答案……"}'
+# 期望: {"ok":true,"chunk_id":358,"created":true,"vectorized":1}
+# 再问同一句: gate(passed=true) → citations 第 1 条 section_path="飞轮补充/人工审核"
+
+# ⑤ 评估趋势 + 按意图成本
+python scripts/run_eval_round.py            # 写一行 eval_runs（--limit 10 可冒烟）
+curl -s localhost:8010/api/v1/review/trend  # 旧 → 新的指标曲线
+curl -s localhost:8010/api/v1/usage/by-intent
+# 期望: 趋势含最近一轮 r5/r10/mrr；成本接口 token_source=estimated
+# 后台页: http://127.0.0.1:8010/admin/review
+```
+
 ## 验收命令（CH10 三条标准）
 
 模型资产（ONNX 409MB + tokenizer）不入 Git，先拉一次并用 `SHA256SUMS.txt` 校验：
@@ -380,7 +441,7 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 476 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 567 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
@@ -389,6 +450,10 @@ python -m tests.eval.run_intent_eval        # CH05 意图识别，38 条标注�
 python -m tests.eval.run_dialogue_eval      # CH06 多轮指代 + 意图 + 怪问题兜底（需真实 key）
 python scripts/context_demo.py --turns 20 --expect-cascade off   # CH07 上下文：装得下就不压（需真模型+真库）
 python scripts/tool_demo.py register        # CH08 工具系统：注册即上线 / MCP 接管 / 韧性 / 确认流
+python scripts/calibrate_gate.py            # CH09 置信度闸阈值校准（76 条真检索，约 22 分钟）
+python scripts/run_flywheel.py --batch 5    # CH09 飞轮：标准化 + 查重 + 进待审
+python scripts/review_cli.py list           # CH09 待审队列（无浏览器时的路径）
+python scripts/run_eval_round.py            # CH09 评估一轮，写 eval_runs
 python scripts/topic_demo.py multi          # CH10 主题分类器：多诉求句命中多类
 ```
 
@@ -472,9 +537,14 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `TOPIC_MODEL_DIR` | `./models/topic_classifier` | ONNX + tokenizer 目录（`/models/` 已 gitignore，用 `fetch_topic_model.py` 拉） |
 | `TOPIC_THRESHOLD` | `0.20` | 多标签判定阈值。**在验证集上扫出来的**，别按测试集调——调了分数就不可信 |
 | `TOPIC_BATCH_SIZE` | `50` | 一批归多少条；定时任务配 `--min-batch` 攒够再跑 |
+| `EVIDENCE_MIN_CONFIDENCE` | `0.45` | CH09：三信号合成的置信度阈值。**校准所得**（误杀 6.5% / 拦下 78.6%），改它等于改「多容易被拒答」 |
+| `EVAL_PIPELINE_ENABLED` | `false` | CH09：评估定时任务开关。跑一轮要加载嵌入 + 重排模型，开发台默认关 |
+| `EVAL_PIPELINE_INTERVAL_HOURS` | `24` | 评估定时间隔 |
+| `EVAL_CASES_PATH` | `tests/eval/ch04_cases.jsonl` | 评估用哪份用例（唯一带分桶与权重的完整检索集） |
 
 ## 已知限制
 
+0. **CH09 没做 Langfuse 接入**：需求第 1 条（trace 树）与第 2 条里的「意图进 trace 元数据」依赖 Langfuse，本章只在本地落了 `intent_usage` / `eval_runs` / `review_queue`。所以「看一次请求各节点耗时」这件事仍然没有；要看就用 `LOG_LEVEL=DEBUG` 的 `node enter/exit` 日志。飞轮的其余闭环（入池 → 查重 → 待审 → 审核 → 回写 → 趋势）全部可跑，见「验收命令（CH09）」。
 1. ~~只做单轮工具调用~~ CH05 起主力 Agent 是多步 ReAct（上限由 `AGENT_MAX_STEPS` 控）。CH07 起会话内上下文有正经管理（三层 + 后台摘要 + 预算倒推），但仍**不做跨会话记忆与用户画像**——每通会话独立，`user_key` 只是个会话归属键。
 2. CH04 起默认走 **hybrid_rerank**；dense 与 BM25 的分数不同量纲、RRF 分只反映名次，跨策略只能比 Recall/MRR，不能比分值。LIKE 降级路仍保留为向量库故障时的兜底。
 3. 向量库存 Milvus Lite 文件库（单机嵌入式，无 Docker 依赖）：索引定死 FLAT 暴力精确检索——一是演示量级（几百块）暴力扫更准，二是 milvus-lite 的 AUTOINDEX 走 faiss，其 Windows 窄字符文件 API 写不了中文路径，跨进程重开必崩（实踩，见 dev-notes/ch03.md）；集合存主键+向量+text(供 BM25 建索引)+category(供过滤)，原文正文一律回 MySQL 取。
@@ -510,5 +580,10 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 30. 池内问题**重复入池**（39 行只对应 13 个不同问题，CH07/CH08 反复测试所致），分布按行统计；接口同时给 `distinct` 但**没有做入池去重**——去重逻辑该在写入侧（`low_confidence_questions`），不在统计侧掩盖。
 31. `models/` 与 `data/` 都在 gitignore 里：拿到仓库要先用 `fetch_topic_model.py` 拉 409MB 模型，否则归类直接跳过（`TopicModelUnavailable`，服务不会挂）。抓取脚本依赖 lab 目录存在，跨机器复现需要自备 ONNX。
 32. 训练/导出脚本**实跑过但没重训交付模型**：`train_topic_model.py full` 只验到「链路能跑」（benchmark 16 条），真重训在 2614 条 CPU 上约需数小时，本章没跑完整轮；交付的 ONNX 与「一键重训」产物不是同一份文件，只保证导出脚本能用 lab 的 `best_model` 复现出等价件（logit 差 6.4e-06）。
+33. **置信度闸对错别字/型号写法不鲁棒**：0.45 这个阈值下被误杀的 4 条全是噪声变体（「急！你们支持货到付款吗，快回一下」这类），31 条干净题零误杀。根子在检索那一段——拼写变了向量分数就掉，闸只是忠实地把低分拦下来。要救得在检索侧做纠错或查询改写，没做。
+34. **归并只跟待审队列的 top-20 比**：已通过/已驳回的缺口不参与查重（通过的有答案在库里、驳回的本就不是知识缺口），所以一个「已驳回」的问题再被问到时会新建一条待审。这是有意的，代价是驳回列表会反复出现同一件事。
+35. **审核没有权限与操作人**：全项目无用户体系，`review_queue` 也没有 `reviewed_by`。谁点的通过查不出来，多人协作前必须补。
+36. **飞轮不自动触发**：`run_flywheel.py` 要手工/外部调度跑；审核更是必须人点。自动写知识库的风险（模型编一条进去，检索时会被当权威证据）比省下的那点人工大得多——这是决定，不是没来得及。
+37. **按意图 token 是估算**：`token_source=estimated`，口径是「系统提示 + 工具定义 + 上下文 + 工具轨迹 + 答复」，跟真实 `usage_metadata` 同比例但有偏差；同一套口径内部比较可靠，跨系统对账不可以（见 CH09 功能段）。
 
 设计文档：`docs/superpowers/specs/`（ch01/ch02/ch03/ch04/ch05/ch07/ch08/ch10 各一份）；实施计划：`docs/superpowers/plans/`；开发留痕：`dev-notes/ch01.md` ~ `dev-notes/ch10.md`。
