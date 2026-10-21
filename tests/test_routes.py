@@ -334,3 +334,41 @@ async def test_conversation_messages_404_for_other_user(client, session):
     conv = await conversation_repo.get_or_create(session, None, "u-owner")
     resp = client.get(f"/api/v1/conversations/{conv.id}/messages", params={"user_key": "u-other"})
     assert resp.status_code == 404
+
+
+async def test_resume_endpoint_passes_decision_and_card(client, monkeypatch):
+    """卡片上点按钮 → 决定与看到的内容一起递回图里;这条路径不传新消息。"""
+    from sse_starlette.sse import ServerSentEvent
+
+    seen: dict = {}
+
+    async def fake_chat(session_id, message, conversation_id=None, **kwargs):
+        seen.update(
+            {"session_id": session_id, "message": message, "conversation_id": conversation_id, **kwargs}
+        )
+        yield ServerSentEvent(data={"finish_reason": "stop"}, event="done")
+
+    monkeypatch.setattr("app.api.routes.chat_with_agent", fake_chat)
+    resp = client.post(
+        "/api/v1/chat/resume",
+        json={
+            "session_id": "t1",
+            "conversation_id": 7,
+            "decision": "approve",
+            "ticket_type": "售后",
+            "description": "鞋子开胶",
+        },
+    )
+    assert resp.status_code == 200
+    assert "finish_reason" in resp.text
+    assert seen["message"] == ""
+    assert seen["conversation_id"] == 7
+    assert seen["resume"] == {"decision": "approve", "ticket_type": "售后", "description": "鞋子开胶"}
+
+
+async def test_resume_endpoint_rejects_unknown_decision(client):
+    resp = client.post(
+        "/api/v1/chat/resume",
+        json={"session_id": "t1", "conversation_id": 7, "decision": "maybe"},
+    )
+    assert resp.status_code == 422

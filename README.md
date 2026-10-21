@@ -1,6 +1,6 @@
 # 电商智能客服系统
 
-电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）+ CH07 会话上下文管理（三层结构、异步摘要、预算倒推、多会话侧栏）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
+电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）+ CH07 会话上下文管理（三层结构、异步摘要、预算倒推、多会话侧栏）+ CH08 工具系统（注册中心、执行引擎、审计、MCP 接入、写操作确认流）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
 
 ## 功能
 
@@ -11,6 +11,7 @@
 | `POST /api/v1/chat/actions/create-ticket` | 建工单：走 CH02 的 `create_ticket` 工具写 `tickets` 表，与转人工互不绑定 |
 | `GET /api/v1/refund/reasons` | 退款原因固定类目（8 个），退款单下拉用 |
 | `POST /api/v1/refund/apply` | 提交退款单：受理即建一张「售后」工单，工单号当受理号返回 |
+| `POST /api/v1/chat/resume` | CH08：工单预览卡片上点「确认提交 / 取消」后接着跑被挂住的那一轮（`{conversation_id, decision, ticket_type, description}`） |
 | `GET /api/v1/conversations` | 只读：该用户全部会话（新的在前、首问预览、是否已摘要），侧栏用 |
 | `GET /api/v1/conversations/{id}/messages` | 只读：回载某会话的历史原文（不是梗概），切回旧会话用 |
 | `POST /api/v1/chat/extract` | 售后描述结构化抽取：`order_id` / `claim_type`（八枚举）/ `expected_solution`，未提及为 `null` |
@@ -35,6 +36,14 @@
 - **祛魅对照**：`app/agent/naive_loop.py` 是同一件事去掉框架的写法（一个 while + 三个出口），`python -m app.agent.naive_loop "订单 1001 的物流到哪了"` 可以直接看它怎么转。
 - **会话状态**：LangGraph State 贯穿全图，checkpointer 按 `thread_id = conversation_id` 存图状态；对话历史仍以 MySQL `messages` 表为权威源，每轮读出、裁剪、注入 State。
 
+**工具系统**（CH08，`app/core/tools/`）：
+
+- **注册中心一张表**：内置工具和 MCP 拉来的工具登记在同一份 `ToolRegistry` 里，每个挂 `ToolMeta`（来源 / 是否写操作 / 哪个 Server）。元数据当 sidecar，不动 `BaseTool` 协议——MCP 的 `StructuredTool` 不用包一层。重名直接抛，不做静默覆盖；MCP 接管 `query_logistics` 时在装配阶段就让内置那条不注册。
+- **执行引擎**（`executor.py`）：存在性 → 权限 → 参数校验 → 执行，顺序不能换（不该执行的操作连参数对不对都不用告诉模型）。校验失败不抛异常，把说明包成工具结果回灌，模型据此追问或改参。超时统一在这里卡；只重试网络抖动类错误，**写操作永不重试**（超时未必没执行）。结果统一格式化并截断到预算内。
+- **审计**（`tool_audit_logs`）：每次调用一条，含被权限拒、被校验拦的。表不挂外键，写审计失败只记日志——审计是旁路，不能反拦工具执行。
+- **MCP 接入**：两个自建 Server（物流 8121 / 售后 8122，Streamable HTTP）。清单按 TTL 拉一次缓存，失败保留上次清单——Server 挂了不该让整个客服瘫。Server 侧加工具只重启那一个 Server，客服服务不重启就能用上。
+- **写操作确认流**：`create_ticket` 走到执行引擎前先在图里挂住（`interrupt`），把类型 + 描述推成前端预览卡片；用户点「确认提交」→ `POST /chat/resume` → `Command(resume=...)` 接着跑。**没确认的写操作一律拒**，不给模型绕过去的机会；恢复后落库用的是用户卡片上看到的那份参数，不是模型重跑后的版本。
+
 **上下文管理**（CH07，`app/core/context.py` + `app/core/token_budget.py` + `app/services/summary_service.py`）：
 
 - **三层结构**：最近的留原文（层 1）、中间按角色截短（层 2：用户原话不动、客服答复只留开头 40 字、工具结果换成一行标识）、最远的压成梗概（层 3）。切分靠 `conversations` 上两个锚点 `summary_upto_msg_id` / `layer1_from_msg_id`，**降级只挪 id、消息行永远不动**——否则切回旧会话就看不到原文了。
@@ -54,7 +63,7 @@
 - **槽位不回填就不猜**：缺订单号时子流程停住，下发 `order_options`（该用户近期 3 单）渲染成聊天流里的可点选卡片；点选后用**同一句原话 + 订单号**重发，子流程从断点继续。退款原因不追问，提交退款单时从固定类目下拉选。
 - **扩写只给容错低的场景**：退款退货/售后才多路扩写，简单 FAQ 不扩；知识库只存一份，扩写在检索侧现查现用。
 
-**五个工具**（`app/core/tools/business_tools.py`）：`query_order` / `query_product` / `query_logistics`（工具内 mock 随机生成，同入参结果确定）、`query_faq`（CH03 起内部为向量语义检索：BGE-M3 嵌入 → Milvus Top-5 → 回 MySQL 取原文；向量库故障时降级 SQL LIKE 兜底）、`create_ticket`（写 tickets 表）。工具基础设施：注册管理、参数 Schema 校验、错误分诊（参数不合法 / 查询落空 / 真故障）、超时控制、暂时性故障重试框架。
+**五个工具**（`app/core/tools/business_tools.py`）：`query_order` / `query_product` / `query_logistics`（工具内 mock 随机生成，同入参结果确定）、`query_faq`（CH03 起内部为向量语义检索：BGE-M3 嵌入 → Milvus Top-5 → 回 MySQL 取原文；向量库故障时降级 SQL LIKE 兜底）、`create_ticket`（写 tickets 表）。CH08 起这五个都挂进注册中心（带来源 / 读写元数据）；`MCP_ENABLED=true` 时 `query_logistics` 让位给物流 MCP Server，另有五个 MCP 只读工具（物流轨迹 / 送达预估 / 是否在保 / 退货进度 / 发票状态）。
 
 **RAG 知识库**（`app/rag/`，CH03）：
 
@@ -241,6 +250,53 @@ curl -s --noproxy '*' 'http://127.0.0.1:8010/api/v1/conversations/<id>/messages?
 **为什么演示配置能算出 18000**：需求给的那组参数是 `MODEL_CONTEXT_WINDOW=18000 MAX_OUTPUT_TOKENS=2000 MAX_USER_INPUT_TOKENS=2000 MAX_AGENT_STEPS=3 TOOL_RESULT_MAX_TOKENS=1200 RERANK_TOP_K=5`，倒推得滑窗 5640（层 1 3947 / 层 2 1693）。实测与需求那组（5650 / 3954 / 1695）差 9~10 token，差在 system prompt 与工具定义的实测字数，算式一致——测试里用近似断言而不是把常量反标定过去。
 
 
+## 验收命令（CH08 七条标准）
+
+本章有两条需要 MCP Server 在跑。先起两个自建 Server（各一个进程，都是 Streamable HTTP）：
+
+```bash
+python scripts/mcp_logistics_server.py --port 8121   # query_logistics_track / estimate_delivery
+python scripts/mcp_aftersale_server.py --port 8122    # check_warranty / query_return_progress / query_invoice_status
+```
+
+```bash
+# ① 新工具只注册、不改核心代码
+python scripts/tool_demo.py register
+# 期望: 运行期注册 query_coupon 并调用成功;再注册一次同名被拦("工具重名")
+
+# ② 参数校验回灌模型（不抛异常）
+python -m pytest tests/test_tool_permission.py -q
+# 期望: 内置工具走 pydantic 全量校验、MCP 工具(JSON Schema dict)只查必填项;拦下记「校验拦下」
+
+# ③ 内置 + MCP 同一份表；Server 加工具只重启该 Server
+MCP_ENABLED=true MCP_SERVERS="logistics=http://127.0.0.1:8121/mcp,aftersale=http://127.0.0.1:8122/mcp" \
+  python scripts/tool_demo.py registry
+# 期望: 9 个工具一张表,来源列 builtin/mcp、写操作只有 create_ticket、Server 列能对上
+# 加工具的做法: 在 mcp_aftersale_server.py 里加 @mcp.tool(),只重启 8122,重跑本命令即见
+# （内置 query_logistics 在 MCP_ENABLED=true 时不在清单里——被接管就下线,不留重名）
+
+# ④ MCP 接管 + 真调一次 + 审计带来源
+MCP_ENABLED=true MCP_SERVERS="..." python scripts/tool_demo.py mcp
+# 期望: 内置 query_logistics 不在清单;query_logistics_track ok;审计 tool_source=mcp / mcp_server=logistics
+
+# ⑤⑥ 拒绝不落库 / 超时与重试规矩
+python scripts/tool_demo.py confirm --decision reject
+# 期望: 先出卡片、此时 tickets 0 行 → 取消后仍 0 行、审计「权限拒绝」、答复改口「没有提交工单」
+python scripts/tool_demo.py resilience
+# 期望: 只读抖动重试 1 次成功;只读超时 retry=0;写操作超时 retry=0 且只调 1 次
+
+# ⑦ 确认后接着跑完
+python scripts/tool_demo.py confirm --decision approve
+# 期望: 卡片 → 确认 → create_ticket ok → tickets 1 行(T{日期}{序号}) → 消息流水 user/assistant/tool/assistant
+
+# 想看真模型自己会不会建单(不稳,只作抽查)
+python scripts/tool_demo.py confirm --real-model
+```
+
+**前端手测**（`http://127.0.0.1:8010/`）：问一句会触发建单的话（如「订单 1001 物流显示已签收但我没收到,帮我建个工单」）→ 聊天流里出现黄底预览卡片（类型 + 描述 + 确认提交/取消）→ 点「确认提交」，卡片变绿并附「已确认,正在提交…」，同一气泡继续流式写答复；点「取消」则变灰、答复改成「没有提交工单」。
+
+`tool_demo.py` 默认落 CH07 那套开发库（`./data/ch07.db` + `./data/ch07_milvus.db`），需要覆盖就传 `DATABASE_URL` / `VECTOR_STORE_URI`。
+
 ## 验收命令（CH04 四条标准）
 
 ```bash
@@ -270,7 +326,7 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 376 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 418 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
@@ -278,6 +334,7 @@ python -m tests.eval.run_rag_eval           # CH04 四策略检索 + Faithfulnes
 python -m tests.eval.run_intent_eval        # CH05 意图识别，38 条标注样例（需真实 key）
 python -m tests.eval.run_dialogue_eval      # CH06 多轮指代 + 意图 + 怪问题兜底（需真实 key）
 python scripts/context_demo.py --turns 20 --expect-cascade off   # CH07 上下文：装得下就不压（需真模型+真库）
+python scripts/tool_demo.py register        # CH08 工具系统：注册即上线 / MCP 接管 / 韧性 / 确认流
 ```
 
 CH04 的评估集是**生成出来的**，脚本按顺序跑（`--reset-store` 重建前会先把 MySQL 的 `vectorize_status` 退回 pending，否则旧向量状态会让块被永久跳过）：
@@ -342,6 +399,10 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `MINE_QA_ENABLED` | `false` | 对话挖知识定时任务开关 |
 | `MINE_QA_INTERVAL_HOURS` | `24` | 挖知识定时间隔 |
 | `MINE_QA_BATCH_SIZE` | `20` | 每批挖掘的会话数 |
+| `MCP_ENABLED` | `false` | 打开后内置 `query_logistics` 下线，物流交给 MCP Server 接管 |
+| `MCP_SERVERS` | 空 | `名字=URL` 逗号分隔，如 `logistics=http://127.0.0.1:8121/mcp,aftersale=http://127.0.0.1:8122/mcp` |
+| `MCP_TOOL_TTL_SECONDS` | `30` | 工具清单缓存时长：Server 侧加工具后最多等这么久，客服服务不用重启 |
+| `MCP_TIMEOUT_SECONDS` | `20.0` | MCP 调用超时（走同一个执行引擎的超时） |
 
 ## 已知限制
 
@@ -356,6 +417,9 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 9. BM25 中文分词用 Milvus 内置 **jieba**（服务端的 `chinese`/lindera 分词器未编进 milvus-lite）；换 Milvus 服务端后建议改回 `chinese`，代码里只改 `ANALYZER` 一处。
 10. SSE `data` 为 JSON，中文走 `\u` 转义（前端解析无影响；CH08 工具结果序列化时统一处理中文不转义）。
 11. 拒答闸以「知识库」为口径：同一轮里既查单/查物流又查知识库时，只要 `query_faq` 零命中就整轮拒答（连同轮的工具结果一起不答），保守取向——宁可少答一次也不让模型凭常识补政策。反方向放行会让「政策类问题」失去唯一的硬约束。
+12. **写操作确认流恢复时会多调一次模型**：LangGraph 的 `interrupt` 在 resume 时会把整个 agent 节点从头重跑（ReAct 循环跟着重跑），实测多 1 次模型调用。落库内容以用户卡片上看到的那份参数为准（重跑后模型改口不影响落库内容），所以工具本身仍要求幂等。
+13. **MCP 工具只做必填项校验**：适配器带过来的是 Server 那侧的 JSON Schema dict，没有 pydantic 模型，所以只查 `required`；类型/枚举这类深校验由 Server 自己负责，我们这侧不假装验过。内置工具仍走 pydantic 全量校验。
+14. **MCP 清单是快照**：Server 删掉工具后旧清单不会自动消失（调用会报连接错），要重启客服服务或强制重拉。静默删掉模型正在用的工具更糟，所以不做自动清理。MCP 工具一律按只读登记——对方的用途声明不可信，写操作必须在我们这侧另配 `ToolMeta(read_only=False)`。
 12. ~~证据自评失败按「证据够」放行~~ CH05 起改为 **fail-closed**（判不了就当不够，走兜底 + 两个出口）：有转人工之后，多拒一次的代价只剩用户多点一下。`degraded` 标记仍保留，入池原因能分辨「判了弱」和「没判成」。
 13. 图状态的 checkpointer 是 `InMemorySaver`（框架自带、零依赖）：进程重启后图中间态清空，但对话历史在 MySQL 里，用户接着聊无感。要跨进程持久化需要 `langgraph-checkpoint-sqlite`，未装（不为一个功能动运行环境）。
 14. 意图识别八类（七类业务 + 「其他」兜底），解析失败落「其他」（业务数据类，直进 Agent）——失败代价最小的方向。置信度字段只记录、不参与路由：本章按「默认配够格的大模型」走，成本吃紧时的小模型试判 + 低置信度升级重判的降级路没做。

@@ -100,6 +100,22 @@ class TicketRequest(BaseModel):
     ticket_type: Literal["售后", "投诉", "咨询"] = "投诉"
 
 
+class ResumeRequest(BaseModel):
+    """工单预览卡片上的「确认提交 / 取消」。
+
+    `decision` 只认 approve / reject 两个语义(中文几个常见说法也认),其余一律按
+    拒绝处理——写操作宁可少做一次。
+    """
+
+    session_id: str = Field(min_length=1)
+    conversation_id: int
+    decision: Literal["approve", "reject"] = "reject"
+    # 卡片上显示过的内容原样带回来:图恢复时会重跑节点,万一模型这次给的参数变了,
+    # 后端靠这两项比对得出「不是用户看到的那张单」,按拒绝处理。
+    ticket_type: str | None = None
+    description: str | None = None
+
+
 @router.post("/chat/stream", response_class=EventSourceResponse, response_model=None)
 async def chat_stream(
     request: ChatRequest,
@@ -111,6 +127,30 @@ async def chat_stream(
         request.conversation_id,
         new_conversation=request.new_conversation,
         order_id=request.order_id,
+        session=session,
+    ):
+        yield event
+
+
+@router.post("/chat/resume", response_class=EventSourceResponse, response_model=None)
+async def chat_resume(
+    request: ResumeRequest,
+    session: AsyncSession = Depends(get_session),
+) -> AsyncIterable[ServerSentEvent]:
+    """接着跑被 interrupt 挂住的那一轮(第八章需求 7)。
+
+    与 `/chat/stream` 的区别只有一处:这里不传新消息,只把用户的决定递回去;
+    图从 checkpoint 继续,把工具执行完、把答复吐完。
+    """
+    async for event in chat_with_agent(
+        request.session_id,
+        "",
+        request.conversation_id,
+        resume={
+            "decision": request.decision,
+            "ticket_type": request.ticket_type or "",
+            "description": request.description or "",
+        },
         session=session,
     ):
         yield event

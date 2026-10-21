@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     mine_qa_enabled: bool = False
     mine_qa_interval_hours: int = 24
     mine_qa_batch_size: int = 20
+    # CH08: MCP 工具接入。mcp_servers 用「名字=URL」逗号分隔,例如
+    # logistics=http://127.0.0.1:8121/mcp,aftersale=http://127.0.0.1:8122/mcp
+    # 开了之后内置 query_logistics 下线,由物流 Server 接管(注册表不许重名)。
+    mcp_enabled: bool = False
+    mcp_servers: str = ""
+    # 清单缓存 TTL:Server 重启加了工具,最多等这么久就能被用上,不用重启客服服务
+    mcp_tool_ttl_seconds: int = 30
+    # 外部 MCP 工具的调用超时通常比内置长(多一跳网络)
+    mcp_timeout_seconds: float = 20.0
 
 
 @lru_cache

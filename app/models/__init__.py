@@ -10,6 +10,7 @@ from app.models.low_confidence_question import LowConfidenceQuestion
 from app.models.message import Message
 from app.models.qa_extraction_staging import QaExtractionStaging
 from app.models.ticket import Ticket
+from app.models.tool_audit import ToolAuditLog
 
 __all__ = [
     "Base",
@@ -22,4 +23,5 @@ __all__ = [
     "Message",
     "QaExtractionStaging",
     "Ticket",
+    "ToolAuditLog",
 ]

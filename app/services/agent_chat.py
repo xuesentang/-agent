@@ -20,6 +20,7 @@ from collections.abc import AsyncGenerator
 
 from fastapi.sse import ServerSentEvent
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.types import Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.gate import REASON_NO_HITS, REASON_SCORE_LOW
@@ -146,6 +147,18 @@ def _custom_to_sse(data: dict) -> ServerSentEvent | None:
                 "top_score": data.get("top_score", 0.0),
             },
         )
+    if kind == "interrupt":
+        # 写操作挂起:前端拿这个事件渲染确认卡片,点按钮再调 /chat/resume
+        return _sse(
+            "interrupt",
+            {
+                "type": data.get("type", ""),
+                "tool": data.get("tool", ""),
+                "tool_call_id": data.get("tool_call_id"),
+                "ticket_type": data.get("ticket_type", ""),
+                "description": data.get("description", ""),
+            },
+        )
     return None
 
 
@@ -269,16 +282,32 @@ async def chat_with_agent(
     *,
     new_conversation: bool = False,
     order_id: str | None = None,
+    resume: str | dict | None = None,
     session: AsyncSession,
     deps: AgentDeps | None = None,
     graph=None,
 ) -> AsyncGenerator[ServerSentEvent, None]:
-    """跑一轮:建/取会话 → 读历史 → 图执行(边跑边推事件)→ 落库 → 下发结果。"""
+    """跑一轮:建/取会话 → 读历史 → 图执行(边跑边推事件)→ 落库 → 下发结果。
+
+    `resume` 非空 = 用户刚在工单预览卡片上点了确认/取消,从 checkpoint 接着跑:
+    不重新规划上下文(同一轮的历史没变),不重复落 user 消息,只把决定递回图里。
+    """
     from app.db import get_sessionmaker
 
     session_factory = get_sessionmaker()
     deps = deps or build_default_deps(session_factory)
     app_graph = graph or build_agent_graph(deps)
+
+    # MCP 工具按 TTL 刷新一次(通常命中缓存):Server 侧加了工具、只重启 Server,
+    # 这边下一轮就能用上,不用重启客服服务(需求 1)
+    settings_now = get_settings()
+    if settings_now.mcp_enabled:
+        try:
+            from app.core.tools.mcp_source import get_mcp_source, refresh_registry
+
+            await refresh_registry(deps.registry, get_mcp_source())
+        except Exception as exc:  # noqa: BLE001 - MCP 挂了不能拖垮内置工具
+            logger.warning("MCP 工具刷新失败(继续用上次清单):%s", exc)
 
     async with _get_lock(session_id):
         try:
@@ -292,26 +321,35 @@ async def chat_with_agent(
         token_ctx = current_conversation_id.set(conv.id)
         citation_ctx = current_citations.set(CitationBucket())
         try:
-            try:
-                plan, summary, budget = await _plan_context(session, conv, message)
-            except Exception as exc:
-                yield _sse("error", {"code": "PROMPT_ERROR", "message": _sanitize(str(exc))})
-                return
+            if resume:
+                # 同一轮的续跑:历史与预算都没变,不用重算(重算还会把锚点再推一次)
+                plan, summary, budget = LayerPlan(), "", None
+            else:
+                try:
+                    plan, summary, budget = await _plan_context(session, conv, message)
+                except Exception as exc:
+                    yield _sse("error", {"code": "PROMPT_ERROR", "message": _sanitize(str(exc))})
+                    return
 
             # 上游真跑起来之后才落 user:失败不留半截(CH01 语义)
             final_state: dict = {}
+            graph_input = (
+                Command(resume=resume)
+                if resume
+                else {
+                    **_TURN_RESET,
+                    "user_input": message,
+                    "messages": [HumanMessage(content=message)],
+                    "history": plan.layer2 + plan.layer1,
+                    "layer2_count": len(plan.layer2),
+                    "summary": summary,
+                    "user_key": session_id,
+                    "order_id": order_id or "",
+                }
+            )
             try:
                 async for chunk in app_graph.astream(
-                    {
-                        **_TURN_RESET,
-                        "user_input": message,
-                        "messages": [HumanMessage(content=message)],
-                        "history": plan.layer2 + plan.layer1,
-                        "layer2_count": len(plan.layer2),
-                        "summary": summary,
-                        "user_key": session_id,
-                        "order_id": order_id or "",
-                    },
+                    graph_input,
                     {"configurable": {"thread_id": str(conv.id)}},
                     stream_mode="custom",
                     version="v2",
@@ -327,6 +365,8 @@ async def chat_with_agent(
                         yield frame
                 snapshot = await app_graph.aget_state({"configurable": {"thread_id": str(conv.id)}})
                 final_state = dict(snapshot.values)
+                # 图停在 interrupt 上等确认:此时 next 非空,这一轮没跑完
+                pending = tuple(getattr(snapshot, "next", ()) or ())
             except Exception as exc:
                 logger.exception("agent graph failed")
                 yield _sse("error", {"code": "UPSTREAM_ERROR", "message": _sanitize(str(exc))})
@@ -337,8 +377,26 @@ async def chat_with_agent(
                 yield _sse("error", {"code": "DB_ERROR", "message": err})
                 return
 
+            if pending:
+                # 挂起等确认:不落 done 的终态,前端凭 interrupted 保留卡片
+                yield _sse(
+                    "done",
+                    {
+                        "session_id": session_id,
+                        "conversation_id": conv.id,
+                        "finish_reason": "awaiting_confirm",
+                        "interrupted": True,
+                        "intent": final_state.get("intent"),
+                        "route": final_state.get("route"),
+                        "actions": [],
+                        "order_options": [],
+                    },
+                )
+                return
+
             # 层 2 攒到超预算就在后台压一段:不 await,不阻塞这一轮的回复(需求 2)
-            await _schedule_summary(session_factory, conv, plan, budget)
+            if budget is not None:
+                await _schedule_summary(session_factory, conv, plan, budget)
 
             citations = final_state.get("citations") or []
             if not citations:
@@ -371,9 +429,14 @@ async def chat_with_agent(
 
 
 async def _persist_turn(session: AsyncSession, conversation_id: int, message: str, state: dict) -> str | None:
-    """user → 工具轨迹 → 终答,顺序与协议一致;DB 异常转成脱敏文本返回,不抛。"""
+    """user → 工具轨迹 → 终答,顺序与协议一致;DB 异常转成脱敏文本返回,不抛。
+
+    resume(用户点了确认/取消之后接着跑)传空的 message:这一轮的 user 消息在
+    发问那次就落过了,再落一条会让历史里出现两句一样的话。
+    """
     try:
-        await message_repo.add_message(session, conversation_id, role="user", content=message)
+        if message:
+            await message_repo.add_message(session, conversation_id, role="user", content=message)
         trail = state.get("trail") or []
         if trail:
             await _persist_trail(session, conversation_id, trail)

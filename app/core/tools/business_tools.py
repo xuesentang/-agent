@@ -19,7 +19,7 @@ from typing import Literal
 from langchain_core.tools import BaseTool
 from langchain_core.tools import tool
 
-from app.core.mock_orders import order_view
+from app.core.mock_orders import logistics_track_text, order_view
 from app.core.tools.context import current_citations, current_conversation_id
 from app.core.tools.registry import ToolRegistry
 from app.rag.citations import build_citations, format_evidence
@@ -86,21 +86,9 @@ def query_product(product_name: str) -> str:
 def query_logistics(order_id: str) -> str:
     """查询订单的物流轨迹(最新在上)。
     order_id: 订单号,如 1001"""
-    rng = random.Random(f"logistics:{order_id}")
-    n = rng.randint(3, 6)
-    # 物流按流程顺序推进:取阶段序列的一个连续子段,再倒序时间。
-    start = rng.randint(0, len(_LOGISTICS_STAGES) - n)
-    stages = _LOGISTICS_STAGES[start : start + n]
-    points = []
-    t = _MOCK_EPOCH_DT + timedelta(hours=rng.randint(2, 240))
-    for stage in reversed(stages):
-        points.append((t, rng.choice(_LOGISTICS_CITIES), stage))
-        t -= timedelta(hours=rng.randint(4, 30))
-    lines = [f"订单 {order_id} 的物流轨迹(最新在上):"]
-    lines += [
-        f"- {t:%m-%d %H:%M} {city} {stage}" for t, city, stage in points
-    ]
-    return "\n".join(lines)
+    # 轨迹文本与 MCP 物流 Server 同源(mock_orders.logistics_track_text):
+    # 第 8 章把物流交给 MCP 之后,同一个订单号必须给出同一份轨迹
+    return logistics_track_text(order_id)
 
 
 # ---------------------------------------------------------------- DB 工具(工厂注入 session)
@@ -184,12 +172,28 @@ def build_db_tools(
 
 @lru_cache
 def build_default_registry() -> ToolRegistry:
-    """全局工具清单:三 mock + 两 DB(session_factory 取 app.db 单例)。"""
+    """全局工具清单:三 mock + 两 DB(session_factory 取 app.db 单例)。
+
+    物流查询在 `MCP_ENABLED=true` 时交给 MCP Server 接管,内置那条**不注册**
+    (注册表重名即报错,所以只能在这里让位,不能两处都登)。
+    """
+    from app.config import get_settings
+    from app.core.tools.registry import ToolMeta
     from app.db import get_sessionmaker
 
+    settings = get_settings()
     registry = ToolRegistry()
-    tools = [query_order, query_product, query_logistics]
+    builtin_meta = {
+        "query_order": ToolMeta(name="query_order", read_only=True),
+        "query_product": ToolMeta(name="query_product", read_only=True),
+        "query_logistics": ToolMeta(name="query_logistics", read_only=True),
+        "query_faq": ToolMeta(name="query_faq", read_only=True),
+        "create_ticket": ToolMeta(name="create_ticket", read_only=False),
+    }
+    tools = [query_order, query_product]
+    if not settings.mcp_enabled:
+        tools.append(query_logistics)
     tools += build_db_tools(get_sessionmaker())
     for t in tools:
-        registry.register(t)
+        registry.register(t, builtin_meta.get(t.name))
     return registry

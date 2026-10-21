@@ -273,6 +273,86 @@ function pickOrder(wrap, orderId) {
   if (lastUserMessage) sendMessage(lastUserMessage, orderId);
 }
 
+/* ---------------------------------------------------------------- 工单确认卡片 */
+// CH08:写操作(建工单)后端挂起等人点按钮。卡片显示的就是后端要提交的内容,
+// 点「确认提交」时把这两项原样带回去——后端会比对,对不上按拒绝处理。
+
+let pendingConfirm = null;
+
+function renderConfirmCard(turn, data) {
+  const wrap = document.createElement("div");
+  wrap.className = "confirm-card";
+  wrap.dataset.state = "pending";
+
+  const title = document.createElement("div");
+  title.className = "confirm-title";
+  title.textContent = "提交工单 · " + (data.ticket_type || "咨询");
+  const desc = document.createElement("div");
+  desc.className = "confirm-desc";
+  desc.textContent = data.description || "(无描述)";
+  const note = document.createElement("div");
+  note.className = "confirm-note";
+  note.textContent = "确认后才会提交给人工客服,取消不建单。";
+
+  const row = document.createElement("div");
+  row.className = "confirm-actions";
+  const ok = document.createElement("button");
+  ok.type = "button";
+  ok.className = "confirm-btn primary";
+  ok.textContent = "确认提交";
+  const no = document.createElement("button");
+  no.type = "button";
+  no.className = "confirm-btn";
+  no.textContent = "取消";
+  row.append(ok, no);
+
+  wrap.append(title, desc, note, row);
+  turn.msg.appendChild(wrap);
+  scrollToBottom();
+
+  const payload = { ticket_type: data.ticket_type || "", description: data.description || "" };
+  ok.addEventListener("click", () => submitConfirm(wrap, turn, "approve", payload));
+  no.addEventListener("click", () => submitConfirm(wrap, turn, "reject", payload));
+  pendingConfirm = { turn, wrap, payload };
+}
+
+async function submitConfirm(wrap, turn, decision, payload) {
+  if (wrap.dataset.state !== "pending") return;
+  wrap.dataset.state = decision;
+  wrap.querySelectorAll("button").forEach((b) => {
+    b.disabled = true;
+  });
+  const tag = document.createElement("div");
+  tag.className = "confirm-note";
+  tag.textContent = decision === "approve" ? "已确认,正在提交…" : "已取消,不提交工单。";
+  wrap.appendChild(tag);
+  pendingConfirm = null;
+
+  sendBtn.disabled = true;
+  try {
+    const resp = await fetch("/api/v1/chat/resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: sessionId,
+        conversation_id: conversationId,
+        decision,
+        ticket_type: payload.ticket_type,
+        description: payload.description,
+      }),
+    });
+    if (!resp.ok || !resp.body) {
+      showError("HTTP " + resp.status);
+      return;
+    }
+    await consumeSSE(resp, turn);
+  } catch (err) {
+    showError(String(err));
+  } finally {
+    sendBtn.disabled = false;
+  }
+}
+
 /* ---------------------------------------------------------------- 退款单 */
 
 let refundReasons = null;
@@ -510,12 +590,16 @@ function handleEvent(event, data, turn) {
       decorateCitations(turn);
       renderSources(turn);
       break;
+    case "interrupt":
+      renderConfirmCard(turn, data);
+      break;
     case "done":
       conversationId = data.conversation_id;
       loadConversations(); // 新会话会出现在侧栏
       if (data.finish_reason === "abstain") turn.bubble.classList.add("abstained");
       renderActions(turn, data.actions);
-      renderFeedback(turn);
+      // 挂在确认上的那一轮还没答完,先别问「有帮助吗」
+      if (!data.interrupted) renderFeedback(turn);
       break;
     case "error":
       showError(data.message || data.code);
@@ -602,6 +686,32 @@ async function send() {
   sendMessage(text, null);
 }
 
+// 读 SSE 帧并派发给 handleEvent。首轮问答与「确认工单后接着跑」共用这一段:
+// resume 的响应体格式完全一样,区别只在 turn 是同一个(答复接着往上写)。
+async function consumeSSE(resp, turn) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop(); // 最后半帧留到下轮
+    for (const frame of frames) {
+      const eventMatch = frame.match(/^event:\s*(.+)$/m);
+      const dataMatch = frame.match(/^data:\s*(.+)$/m);
+      if (eventMatch && dataMatch) {
+        try {
+          handleEvent(eventMatch[1].trim(), JSON.parse(dataMatch[1]), turn);
+        } catch (err) {
+          console.error("bad SSE frame:", frame, err);
+        }
+      }
+    }
+  }
+}
+
 // orderId 只在「点选订单卡片」这条路上传:普通发消息一律不带,免得一直粘着上一单
 async function sendMessage(text, orderId) {
   if (!text) return;
@@ -628,28 +738,7 @@ async function sendMessage(text, orderId) {
       showError("HTTP " + resp.status);
       return;
     }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop(); // 最后半帧留到下轮
-      for (const frame of frames) {
-        const eventMatch = frame.match(/^event:\s*(.+)$/m);
-        const dataMatch = frame.match(/^data:\s*(.+)$/m);
-        if (eventMatch && dataMatch) {
-          try {
-            handleEvent(eventMatch[1].trim(), JSON.parse(dataMatch[1]), turn);
-          } catch (err) {
-            console.error("bad SSE frame:", frame, err);
-          }
-        }
-      }
-    }
+    await consumeSSE(resp, turn);
   } catch (err) {
     showError(String(err));
   } finally {

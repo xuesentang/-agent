@@ -81,8 +81,14 @@ async def run_react(
     max_steps: int = 4,
     token_budget: int = 6000,
     writer=None,
+    confirm_write=None,
 ) -> ReactOutcome:
-    """跑一轮 ReAct。writer 用来把 token / 工具事件推给外部(没有就静默)。"""
+    """跑一轮 ReAct。writer 用来把 token / 工具事件推给外部(没有就静默)。
+
+    `confirm_write(tool_call) -> bool` 是写操作的确认闸:返回 True 才执行。
+    图里传进来的是「推工单预览卡片给前端,等用户点确认」的实现;不传就等于
+    写操作一律拒(单测、脚本默认不会误建工单)。
+    """
     executor = executor or ToolExecutor(registry)
     bound = model.bind_tools(registry.for_bind())
 
@@ -128,7 +134,20 @@ async def run_react(
         for call in aggregate.tool_calls:
             if writer is not None:
                 writer({"kind": "tool_start", "tool_call_id": call["id"], "name": call["name"], "args": call.get("args") or {}})
-            result = await executor.execute(call)
+            # 写操作要用户确认(第八章):确认由调用方注入(图里是 interrupt),
+            # 没注入就等于「没人能确认」,一律拒——不许默认放行。
+            # 返回值三种:False=拒绝;True=同意、就用这次模型给的参数;dict=同意、
+            # 但要以用户看到的那份参数为准(图恢复时会重跑节点,模型可能改口)。
+            meta = registry.meta(call["name"]) if registry is not None else None
+            confirmed = True
+            if meta is not None and meta.is_write:
+                decision = await confirm_write(call) if confirm_write is not None else False
+                confirmed = decision is not False and decision is not None
+                if confirmed and isinstance(decision, dict) and decision:
+                    if dict(decision) != dict(call.get("args") or {}):
+                        logger.info("写操作参数以用户确认的版本为准(模型重跑后改口)")
+                    call = {**call, "args": dict(decision)}
+            result = await executor.execute(call, confirmed=confirmed)
             outcome.steps.append(
                 ReactStep(step_no, result.name, dict(call.get("args") or {}), result.ok, result.content)
             )

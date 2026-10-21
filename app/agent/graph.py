@@ -156,6 +156,54 @@ def _emit_token(text: str) -> None:
         _emit({"kind": "token", "text": text})
 
 
+# 用户点「确认提交」时前端回传的取值。给宽松一点:中英文几个常见说法都认
+_APPROVE_WORDS = {"approve", "approved", "yes", "ok", "true", "1", "确认", "确认提交", "同意"}
+
+
+async def _confirm_write(call: dict, writer):
+    """写操作的确认闸:把预览推给前端,挂起图,等 resume 带决定回来。
+
+    顺序不能反——先把 `interrupt` 事件推出去(前端要靠它渲染预览卡片),
+    再调 `interrupt()` 挂起。反过来的话卡片永远出不来,用户没东西可点。
+
+    没有 writer(直接 ainvoke)时也照样挂起:宁可挂住,也不能静默执行写操作。
+
+    返回三种值,`run_react` 按它决定执行什么:
+    - `False` 拒绝;
+    - `dict` 同意,且**以用户看到的那份参数为准**——图恢复时节点会从头重跑
+      (LangGraph 的 interrupt 语义),模型很可能把描述改了个措辞。用户点的是
+      卡片上那句话,就提交那句话;拿重跑后的版本来写库等于替用户改了主意。
+    - `True` 同意,沿用这次的参数(前端没回传内容时的退路)。
+    """
+    from langgraph.types import interrupt
+
+    args = call.get("args") or {}
+    preview = {
+        "kind": "interrupt",
+        "type": "ticket_confirm",
+        "tool": call.get("name"),
+        "tool_call_id": call.get("id"),
+        # 这两项就是卡片上要显示的内容(需求 7:工单类型 + 问题描述)
+        "ticket_type": args.get("ticket_type") or "",
+        "description": args.get("description") or "",
+    }
+    if writer is not None:
+        writer(preview)
+    resolved = interrupt(preview)
+
+    if isinstance(resolved, dict):
+        if str(resolved.get("decision") or "").strip().lower() not in _APPROVE_WORDS:
+            return False
+        seen = {
+            "ticket_type": resolved.get("ticket_type") or "",
+            "description": resolved.get("description") or "",
+        }
+        return seen if all(seen.values()) else True
+
+    approved = str(resolved or "").strip().lower() in _APPROVE_WORDS
+    return True if approved else False
+
+
 def build_agent_graph(deps: AgentDeps):
     """编译图。deps 用闭包捕获——节点保持纯函数,不必知道依赖从哪来。"""
 
@@ -260,7 +308,7 @@ def build_agent_graph(deps: AgentDeps):
             state.get("canonical_query") or state.get("resolved_query", ""),
             order_id=state.get("slot_order_id") or None,
             registry=deps.registry,
-            executor=ToolExecutor(deps.registry),
+            executor=ToolExecutor(deps.registry, session_factory=deps.session_factory),
             session_factory=deps.session_factory,
             retriever=deps.retriever,
             expand_model=deps.expand_model,
@@ -320,6 +368,8 @@ def build_agent_graph(deps: AgentDeps):
             state.get("resolved_query", ""),
             model=deps.model,
             registry=deps.registry,
+            # 带 session_factory 才会落审计:写操作被拒也要留痕(需求 5)
+            executor=ToolExecutor(deps.registry, session_factory=deps.session_factory),
             history=state.get("history") or [],
             summary=state.get("summary") or "",
             evidence=evidence,
@@ -327,6 +377,7 @@ def build_agent_graph(deps: AgentDeps):
             max_steps=deps.max_steps,
             token_budget=deps.token_budget,
             writer=writer,
+            confirm_write=lambda call: _confirm_write(call, writer),
         )
         _emit_node("agent", "exit")
         # 退款子流程里已经拿到订单事实 = 这一单能走到「申请退款」这一步,给个入口;
