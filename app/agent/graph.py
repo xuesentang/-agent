@@ -27,12 +27,13 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 
 from app.agent.gate import check_gate, citations_from_payload
 from app.agent.intent import (
@@ -80,7 +81,13 @@ class AgentState(TypedDict, total=False):
 
     # 输入
     user_input: str
+    # CH07:全量对话消息挂 add_messages reducer——各节点只管吐自己新产出的消息,
+    # 框架按顺序并入,并由 checkpoint 落盘。喂给模型的是另一份裁过、带梗概的精简版
+    # (`history` + `summary`),两者互不影响(需求 5)。
+    messages: Annotated[list[BaseMessage], add_messages]
+    summary: str  # 早期对话梗概(空 = 还没压过)
     history: list[BaseMessage]  # 服务层注入的裁剪后历史(每轮覆盖,不用 reducer)
+    layer2_count: int  # history 里前 n 条是层 2(只给日志分层用,不影响发给模型的顺序)
     user_key: str  # 用户键(session_id),用于取「这个人的近期订单」
     order_id: str  # 前端点选订单卡片回填的槽位
     # 理解层
@@ -161,7 +168,10 @@ def build_agent_graph(deps: AgentDeps):
         _emit_node("resolve_reference", "enter")
         raw = state.get("user_input", "")
         understood = await understand_query(
-            raw, history=state.get("history") or [], model=deps.understand_model
+            raw,
+            history=state.get("history") or [],
+            summary=state.get("summary") or "",
+            model=deps.understand_model,
         )
         # 前端点选订单卡片回填的槽位优先于模型抽出来的
         slot = state.get("order_id") or understood.order_id
@@ -268,6 +278,7 @@ def build_agent_graph(deps: AgentDeps):
             return {
                 "order_options": options,
                 "reply": NEED_ORDER_REPLY,
+                "messages": [AIMessage(content=NEED_ORDER_REPLY)],
                 "finish_reason": "need_order",
                 "actions": [],
                 "gate_passed": None,
@@ -310,7 +321,9 @@ def build_agent_graph(deps: AgentDeps):
             model=deps.model,
             registry=deps.registry,
             history=state.get("history") or [],
+            summary=state.get("summary") or "",
             evidence=evidence,
+            layer2_count=int(state.get("layer2_count") or 0),
             max_steps=deps.max_steps,
             token_budget=deps.token_budget,
             writer=writer,
@@ -319,10 +332,14 @@ def build_agent_graph(deps: AgentDeps):
         # 退款子流程里已经拿到订单事实 = 这一单能走到「申请退款」这一步,给个入口;
         # 是否真的可退由 Agent 的回答说明,按钮只是把动作递到用户手上
         actions = [ACTION_REFUND] if state.get("route") == ROUTE_REFUND and state.get("order_facts") else []
+        new_messages = list(outcome.trail)
+        if outcome.reply:
+            new_messages.append(AIMessage(content=outcome.reply))
         return {
             "reply": outcome.reply,
             "finish_reason": "stop",
             "trail": outcome.trail,
+            "messages": new_messages,
             "steps": outcome.model_calls,
             "tokens": outcome.tokens,
             "stopped_by": outcome.stopped_by,
@@ -336,6 +353,7 @@ def build_agent_graph(deps: AgentDeps):
         _emit_node("abstain", "exit")
         return {
             "reply": ABSTAIN_REPLY,
+            "messages": [AIMessage(content=ABSTAIN_REPLY)],
             "finish_reason": "abstain",
             "actions": list(ESCALATION_ACTIONS),
             "gate_passed": False,
@@ -348,6 +366,7 @@ def build_agent_graph(deps: AgentDeps):
         _emit_node("complaint_reply", "exit")
         return {
             "reply": COMPLAINT_REPLY,
+            "messages": [AIMessage(content=COMPLAINT_REPLY)],
             "finish_reason": "complaint",
             "actions": list(ESCALATION_ACTIONS),
         }
@@ -357,7 +376,12 @@ def build_agent_graph(deps: AgentDeps):
         _emit_node("chitchat_reply", "enter")
         _emit_token(CHITCHAT_REPLY)
         _emit_node("chitchat_reply", "exit")
-        return {"reply": CHITCHAT_REPLY, "finish_reason": "chitchat", "actions": []}
+        return {
+            "reply": CHITCHAT_REPLY,
+            "messages": [AIMessage(content=CHITCHAT_REPLY)],
+            "finish_reason": "chitchat",
+            "actions": [],
+        }
 
     async def log_trace(state: AgentState) -> dict:
         """日志记录节点:一行结构化日志,不建表(本章无新表)。"""

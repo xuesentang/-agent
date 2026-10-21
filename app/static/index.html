@@ -13,13 +13,19 @@
         <span class="avatar">🤖</span>
         <div>
           <div class="title">小智 · 电商智能客服</div>
-          <div class="subtitle">CH06 · 指代消解 + 意图识别 + 退款子流程</div>
+          <div class="subtitle">CH07 · 三层上下文 + 异步摘要 + 多会话</div>
         </div>
       </div>
       <button id="new-chat" title="开一轮新会话">新会话</button>
     </header>
 
-    <main id="messages" aria-live="polite"></main>
+    <div id="body">
+      <aside id="conv-sidebar" aria-label="会话列表">
+        <div class="conv-head">会话</div>
+        <div id="conv-list"></div>
+      </aside>
+      <main id="messages" aria-live="polite"></main>
+    </div>
 
     <footer id="composer">
       <input id="input" type="text" placeholder="问点什么吧，如：邮费是多少 / 订单1001的物流到哪了" autocomplete="off" />

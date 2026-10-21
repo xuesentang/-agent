@@ -8,6 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversation import Conversation
 
 
+async def list_by_user(session: AsyncSession, user_id: str, limit: int = 50) -> list[Conversation]:
+    """该用户全部会话,新的在前(侧栏用)。"""
+    stmt = (
+        select(Conversation)
+        .where(Conversation.user_id == user_id)
+        .order_by(Conversation.id.desc())
+        .limit(limit)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
 async def get_or_create(
     session: AsyncSession,
     conversation_id: int | None,

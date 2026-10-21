@@ -19,17 +19,24 @@ import logging
 from collections.abc import AsyncGenerator
 
 from fastapi.sse import ServerSentEvent
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.gate import REASON_NO_HITS, REASON_SCORE_LOW
 from app.agent.graph import AgentDeps, build_agent_graph
 from app.config import get_settings
-from app.core.session import trim_history
+from app.core.context import HistoryItem, LayerPlan, plan_layers, render_history_ctx
+from app.core.prompts import build_agent_system_prompt
+from app.core.token_budget import ContextBudget, budget_from_settings
 from app.core.tools.business_tools import build_default_registry
 from app.core.tools.context import CitationBucket, current_citations, current_conversation_id
 from app.models.message import Message
-from app.repositories import conversation_repo, low_confidence_repo, message_repo
+from app.repositories import (
+    conversation_repo,
+    conversation_summary_repo,
+    low_confidence_repo,
+    message_repo,
+)
 from app.services.tool_chat import _get_lock, _sanitize, _to_langchain
 
 logger = logging.getLogger(__name__)
@@ -71,6 +78,7 @@ _TURN_RESET: dict = {
     "tokens": 0,
     "stopped_by": "",
     "trace": {},
+    "layer2_count": 0,
 }
 
 
@@ -141,6 +149,73 @@ def _custom_to_sse(data: dict) -> ServerSentEvent | None:
     return None
 
 
+async def _plan_context(
+    session: AsyncSession, conv, message: str
+) -> tuple[LayerPlan, str, ContextBudget]:
+    """算出这一轮发给模型的精简版历史 + 梗概(需求 1/4)。
+
+    **历史一律从 messages 表读**,不从 checkpoint 的 State 读:锚点比的是 `messages.id`,
+    只有库里的行才有这个 id。State 里那份全量消息负责「完整历史落盘」和跨节点传话,
+    两件事互不相干(需求 5)。
+    """
+    settings = get_settings()
+    budget: ContextBudget = budget_from_settings(
+        build_agent_system_prompt(max_steps=settings.agent_max_steps)
+    )
+    rows = await message_repo.list_by_conversation(session, conv.id)
+    converted = _to_langchain(rows)
+    sizes = len(converted)
+    items = [
+        HistoryItem(msg_id=rows[i].id, message=converted[i]) for i in range(min(len(rows), sizes))
+    ]
+    summary = await conversation_summary_repo.joined_text(session, conv.id)
+
+    plan = plan_layers(
+        items,
+        summary_upto_msg_id=int(conv.summary_upto_msg_id or 0),
+        layer1_from_msg_id=int(conv.layer1_from_msg_id or 0),
+        layer1_budget=budget.layer1,
+        layer2_budget=budget.layer2,
+        assistant_head=settings.layer2_assistant_head,
+    )
+    if plan.demoted:
+        old = int(conv.layer1_from_msg_id or 0)
+        # 降级只挪锚点、不搬数据(需求 1)
+        await conversation_summary_repo.advance_anchors(
+            session,
+            conv,
+            summary_upto_msg_id=int(conv.summary_upto_msg_id or 0),
+            layer1_from_msg_id=plan.layer1_from_msg_id,
+        )
+        logger.info(
+            "layer1 降级 %s→%s(挪 %s 条进层2),层1 预算 %s",
+            old,
+            plan.layer1_from_msg_id,
+            plan.demoted,
+            budget.layer1,
+        )
+    # 每轮必打,闲聊兜底轮也打(需求 6)
+    logger.info(render_history_ctx(plan, summary=summary, question=message))
+    return plan, summary, budget
+
+
+async def _schedule_summary(session_factory, conv, plan: LayerPlan, budget: ContextBudget) -> None:
+    """层 2 超预算才起后台摘要;失败不影响本轮(摘要下一轮还会再触发)。
+
+    模型槽位留空(用默认抽取模型);要换成别的模型就走
+    `summary_service.schedule_summary` 传 `model=`。
+    """
+    from app.services.summary_service import schedule_summary
+
+    schedule_summary(
+        conversation_id=conv.id,
+        session_factory=session_factory,
+        layer2_tokens=plan.tokens_layer2_raw,
+        layer2_budget=budget.layer2,
+        layer1_from_msg_id=plan.layer1_from_msg_id,
+    )
+
+
 def build_default_deps(session_factory) -> AgentDeps:
     """生产依赖:真模型 + 默认工具注册表 + 默认检索器 + 内存 checkpointer。"""
     from app.agent.checkpointer import get_checkpointer
@@ -201,7 +276,8 @@ async def chat_with_agent(
     """跑一轮:建/取会话 → 读历史 → 图执行(边跑边推事件)→ 落库 → 下发结果。"""
     from app.db import get_sessionmaker
 
-    deps = deps or build_default_deps(get_sessionmaker())
+    session_factory = get_sessionmaker()
+    deps = deps or build_default_deps(session_factory)
     app_graph = graph or build_agent_graph(deps)
 
     async with _get_lock(session_id):
@@ -217,10 +293,7 @@ async def chat_with_agent(
         citation_ctx = current_citations.set(CitationBucket())
         try:
             try:
-                history = trim_history(
-                    _to_langchain(await message_repo.list_by_conversation(session, conv.id)),
-                    get_settings().history_token_budget,
-                )
+                plan, summary, budget = await _plan_context(session, conv, message)
             except Exception as exc:
                 yield _sse("error", {"code": "PROMPT_ERROR", "message": _sanitize(str(exc))})
                 return
@@ -232,7 +305,10 @@ async def chat_with_agent(
                     {
                         **_TURN_RESET,
                         "user_input": message,
-                        "history": history,
+                        "messages": [HumanMessage(content=message)],
+                        "history": plan.layer2 + plan.layer1,
+                        "layer2_count": len(plan.layer2),
+                        "summary": summary,
                         "user_key": session_id,
                         "order_id": order_id or "",
                     },
@@ -260,6 +336,9 @@ async def chat_with_agent(
             if err:
                 yield _sse("error", {"code": "DB_ERROR", "message": err})
                 return
+
+            # 层 2 攒到超预算就在后台压一段:不 await,不阻塞这一轮的回复(需求 2)
+            await _schedule_summary(session_factory, conv, plan, budget)
 
             citations = final_state.get("citations") or []
             if not citations:

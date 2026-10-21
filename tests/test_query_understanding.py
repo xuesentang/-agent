@@ -46,6 +46,21 @@ async def test_pronoun_is_resolved_with_history():
     assert "订单 1001 买了个耳机" in model.prompts[0]
 
 
+async def test_summary_is_given_to_understand_early_orders():
+    """早期对话被压成梗概后,「最开始那个订单」只能靠梗概指认。"""
+    model = FakeModel('{"resolved": "订单 1001 的物流到哪了", "canonical": "物流进度", "order_id": "1001", "changed": true}')
+    r = await understand_query(
+        "最开始那个订单后来怎么说",
+        history=[{"role": "user", "content": "订单 1007 到哪了"}],
+        summary="订单 1001 待发货,用户问过物流;订单 1007 已签收,用户要退货。",
+        model=model,
+    )
+    assert r.order_id == "1001"
+    prompt = model.prompts[0]
+    assert "订单 1001 待发货" in prompt, "梗概必须进提示词,否则时序指代无从判断"
+    assert "时序指代" in prompt
+
+
 async def test_complete_question_passes_through_unchanged():
     model = FakeModel('{"resolved": "邮费是多少", "canonical": "运费标准", "order_id": null, "changed": false}')
     r = await understand_query("邮费是多少", model=model)

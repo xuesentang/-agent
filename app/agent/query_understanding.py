@@ -33,15 +33,21 @@ UNDERSTAND_PROMPT = """你是电商客服系统的问句理解模块。结合最
    - 补全后要能脱离对话单独看懂;
    - 补的是**对话里真实出现过**的东西,不许猜、不许编造商品或订单号;
    - 问题本来就完整、没有指代,就原样输出,并把 changed 置为 false。
+   - 「最开始 / 第一次 / 早先 / 一开始」这类**时序指代**指向的是【早前对话梗概】里
+     按时间先后出现的第一笔订单;梗概里的订单按时间先后排列,取最前面那一单的订单号。
 
 二、问法归一(给检索用):把口语说法换成知识库里的标准说法,意思不能变。
    - 例:邮费 → 运费;保修 → 质保;能退吗 → 退货条件;多久到账 → 退款时效;
    - 只归一说法,**不要扩写、不要换问题、不要回答**,不要加入用户没说的条件。
 
 三、槽位:抽出用户**在这句话或最近对话里明确说过的订单号**(纯数字)。没有就填 null,禁止猜。
+   时序指代(「最开始那个订单」)消解出订单号后,这一项也要填上。
 
 只输出 JSON:
 {{"resolved": "补全后的问题", "canonical": "归一后的问法", "order_id": "订单号或 null", "changed": true 或 false}}
+
+早前对话梗概(更早轮次已压缩,其中事实可信;订单按时间先后列出):
+{summary}
 
 最近对话:
 {history}
@@ -100,8 +106,15 @@ def history_text(history: list | None, limit: int = 6) -> str:
     return "\n".join(lines) or "(无)"
 
 
-async def understand_query(question: str, *, history: list | None = None, model=None) -> UnderstoodQuery:
-    """指代消解 + 问法归一。任何失败都退回原句,理解层不许把主链路带崩。"""
+async def understand_query(
+    question: str, *, history: list | None = None, summary: str = "", model=None
+) -> UnderstoodQuery:
+    """指代消解 + 问法归一。任何失败都退回原句,理解层不许把主链路带崩。
+
+    `summary` 是早前对话的梗概:长会话里早期内容已经被压掉,不给它,
+    「最开始那个订单后来怎么说」这种时序指代就只能靠层 1 里零星的单号瞎猜——
+    实测会指到最近提过的那一单上,答出一个事实正确但**答非所问**的订单。
+    """
     if model is None:
         try:
             from app.core.llm import get_extract_model
@@ -111,7 +124,9 @@ async def understand_query(question: str, *, history: list | None = None, model=
             logger.warning("理解层模型不可用,原样透传:%s", exc)
             return _passthrough(question, fallback=True)
 
-    prompt = UNDERSTAND_PROMPT.format(history=history_text(history), question=question)
+    prompt = UNDERSTAND_PROMPT.format(
+        summary=(summary or "(无)"), history=history_text(history), question=question
+    )
     try:
         resp = await model.ainvoke([("human", prompt)], response_format={"type": "json_object"})
         text = getattr(resp, "content", "") or ""

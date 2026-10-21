@@ -53,6 +53,18 @@ class Settings(BaseSettings):
     kb_min_score: float = 0.45
     agent_max_steps: int = 4
     agent_token_budget: int = 6000
+    # CH07: 上下文管理 — 预算从窗口倒推,不写死历史长度。
+    # 这五项是倒推公式的输入,改任何一个都会改变层 1/层 2 的预算(验收 2 用它演示级联)。
+    model_context_window: int = 65536
+    max_output_tokens: int = 2000
+    max_user_input_tokens: int = 2000
+    tool_result_max_tokens: int = 1200
+    rerank_top_k: int = 5
+    # 层 2 里客服答复只留开头这么多字(用户原话不动,工具结果换成一行标识)
+    layer2_assistant_head: int = 40
+    # 后台摘要开关与超时(摘要失败不影响当轮回复)
+    context_summary_enabled: bool = True
+    context_summary_timeout: int = 60
     # CH03: 对话挖知识定时任务(默认关;开了 lifespan 起后台循环,按 interval 跑一轮)
     mine_qa_enabled: bool = False
     mine_qa_interval_hours: int = 24

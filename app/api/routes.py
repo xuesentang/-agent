@@ -264,3 +264,64 @@ async def apply_refund(
         "reason": request.reason,
         "message": reply,
     }
+
+
+# ---------------------------------------------------------------- CH07 只读会话接口
+
+
+@router.get("/conversations")
+async def list_conversations(
+    user_key: str,
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """侧栏用:该用户全部会话,新的在前,带首问预览与「已摘要」标记。
+
+    `user_key` 就是聊天接口的 `session_id`(本项目的用户键)。只读、不带鉴权,
+    与聊天接口的信任级别一致(README 已知限制:无用户体系)。
+    """
+    from app.repositories import conversation_repo
+
+    rows = await conversation_repo.list_by_user(session, user_key, limit=limit)
+    out: list[dict[str, Any]] = []
+    for conv in rows:
+        msgs = await message_repo.list_by_conversation(session, conv.id)
+        first_user = next((m for m in msgs if m.role == "user"), None)
+        preview = (first_user.content or "").strip().replace("\n", " ") if first_user else ""
+        out.append(
+            {
+                "conversation_id": conv.id,
+                "status": conv.status,
+                "preview": preview[:40],
+                "message_count": len(msgs),
+                "summarized": int(conv.summary_upto_msg_id or 0) > 0,
+                "created_at": conv.created_at.isoformat() if conv.created_at else None,
+            }
+        )
+    return {"conversations": out}
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def conversation_messages(
+    conversation_id: int,
+    user_key: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """切回旧会话时回载历史原文(不是梗概,原文永远在库里)。"""
+    conv = await session.get(Conversation, conversation_id)
+    if conv is None or conv.user_id != user_key:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    msgs = await message_repo.list_by_conversation(session, conversation_id)
+    return {
+        "conversation_id": conversation_id,
+        "summarized": int(conv.summary_upto_msg_id or 0) > 0,
+        "messages": [
+            {
+                "role": m.role,
+                "content": m.content or "",
+                "tool_call_id": m.tool_call_id,
+                "has_tool_calls": bool(m.tool_calls),
+            }
+            for m in msgs
+        ],
+    }

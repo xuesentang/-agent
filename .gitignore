@@ -15,3 +15,6 @@ __pycache__/
 # 本地协作文档,不进仓库
 AGENTS.md
 能力差异.md
+
+# 临时排查脚本
+_probe_*.py

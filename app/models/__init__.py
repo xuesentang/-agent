@@ -2,6 +2,7 @@
 
 from app.models.base import Base
 from app.models.conversation import Conversation
+from app.models.conversation_summary import ConversationSummary
 from app.models.faith_case import FaithCase
 from app.models.faq import Faq
 from app.models.knowledge_chunk import KnowledgeChunk
@@ -13,6 +14,7 @@ from app.models.ticket import Ticket
 __all__ = [
     "Base",
     "Conversation",
+    "ConversationSummary",
     "FaithCase",
     "Faq",
     "KnowledgeChunk",

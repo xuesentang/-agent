@@ -1,6 +1,6 @@
 # 电商智能客服系统
 
-电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
+电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）+ CH07 会话上下文管理（三层结构、异步摘要、预算倒推、多会话侧栏）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
 
 ## 功能
 
@@ -11,6 +11,8 @@
 | `POST /api/v1/chat/actions/create-ticket` | 建工单：走 CH02 的 `create_ticket` 工具写 `tickets` 表，与转人工互不绑定 |
 | `GET /api/v1/refund/reasons` | 退款原因固定类目（8 个），退款单下拉用 |
 | `POST /api/v1/refund/apply` | 提交退款单：受理即建一张「售后」工单，工单号当受理号返回 |
+| `GET /api/v1/conversations` | 只读：该用户全部会话（新的在前、首问预览、是否已摘要），侧栏用 |
+| `GET /api/v1/conversations/{id}/messages` | 只读：回载某会话的历史原文（不是梗概），切回旧会话用 |
 | `POST /api/v1/chat/extract` | 售后描述结构化抽取：`order_id` / `claim_type`（八枚举）/ `expected_solution`，未提及为 `null` |
 | `GET /` | 聊天页（原生 HTML/JS）：消息流、流式渲染、节点流程行、可点选订单卡片、退款单表单、工具轨迹徽章、可点引用角标（点开看来源章节与原文）、每条回答的 👍/👎 反馈 |
 
@@ -33,6 +35,16 @@
 - **祛魅对照**：`app/agent/naive_loop.py` 是同一件事去掉框架的写法（一个 while + 三个出口），`python -m app.agent.naive_loop "订单 1001 的物流到哪了"` 可以直接看它怎么转。
 - **会话状态**：LangGraph State 贯穿全图，checkpointer 按 `thread_id = conversation_id` 存图状态；对话历史仍以 MySQL `messages` 表为权威源，每轮读出、裁剪、注入 State。
 
+**上下文管理**（CH07，`app/core/context.py` + `app/core/token_budget.py` + `app/services/summary_service.py`）：
+
+- **三层结构**：最近的留原文（层 1）、中间按角色截短（层 2：用户原话不动、客服答复只留开头 40 字、工具结果换成一行标识）、最远的压成梗概（层 3）。切分靠 `conversations` 上两个锚点 `summary_upto_msg_id` / `layer1_from_msg_id`，**降级只挪 id、消息行永远不动**——否则切回旧会话就看不到原文了。
+- **预算从窗口倒推**：`history = window - system(实测) - 工具定义 - 证据 - 摘要 - 输出预留 - 用户输入预留 - ReAct 峰值 - 5% 安全余量`，再按 7:3 分层 1 / 层 2。参数全在 `.env`，不写死。
+- **token 口径自己数**：LangChain 的 `count_tokens_approximately` 按英文 BPE 数中文，1061 个汉字报 5305（五倍）。改用汉字 1 token、其余 4 字符 1 token，对中文偏保守。
+- **异步摘要**：层 2 的**用量**（截断前）超预算才在后台起一次压缩，压成一段追加进 `conversation_summaries`，边界追到层 1 起点；不 await、失败只记日志。触发看用量不看条数——工具结果不落消息表，数条数看不见它涨。
+- **拼装顺序**：`system`（人设 + 红线 + 工具定义）→ 层 2 → 层 1 → 当前这句 →（梗概 + 检索证据）。梗概不单独占 system：上游会把所有 system 上提合并，工具定义被挤到可变内容之后，前缀缓存整段作废。
+- **可观测**：每轮 `history_ctx`（摘要行 + 滑窗，闲聊兜底轮也打）、主力 Agent 轮 `model_ctx`（梗概全文 + 滑窗逐条 + 条数 + token），后台摘要的 trigger / start / done / skip / fail 全留痕。
+- **多会话**：State 的 `messages` 挂 `add_messages` reducer 存全量（checkpoint 落盘），喂模型的是另一份裁过、带梗概的精简版，两者互不影响；前端侧栏列出全部会话，点开回载原文接着聊。
+
 **分流器正式版**（CH06，`app/agent/`）：
 
 - **指代消解 + 问法归一并成一次调用**（`query_understanding.py`）：读同一份上下文的两个活分两次调，会得出两种「用户在说什么」；合并后一份 JSON 出 `resolved` / `canonical` / `order_id`。问题本身完整就 `changed=false` 原样透传——改写不是目的，把好问题揉一遍检索更差。
@@ -51,7 +63,7 @@
 - **对话挖知识**：`app/rag/miner.py` 把历史客服对话分批喂 LLM 抽 QA 对，先进 `qa_extraction_staging` 暂存、整体去重（规范化问法）后入知识库；服务端定时开关 `MINE_QA_ENABLED`（默认关）。
 - **在线检索**：问题向量化 → Milvus 相似度 Top-K → 回 MySQL 取原文，替换 `query_faq` 的关键词实现（工具入参出参契约不变）。
 
-**多轮上下文**：历史落 MySQL `messages` 表，按 token 预算裁剪（默认 2048，只裁历史，system prompt 恒在首位）；同一 `session_id` 连续发消息复用最近进行中的会话，未知 `conversation_id` 静默走复用/新建。
+**多轮上下文**：历史落 MySQL `messages` 表（权威源），state 里另存一份全量喂 checkpoint。CH07 起不再用 `HISTORY_TOKEN_BUDGET` 单值裁剪，改按窗口倒推的三层结构（见上）；`HISTORY_TOKEN_BUDGET` 仍保留给未接入上下文管理的脚本用。同一 `session_id` 连续发消息复用最近进行中的会话，未知 `conversation_id` 静默走复用/新建。
 
 ## 快速开始
 
@@ -191,6 +203,44 @@ curl -s --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/refund/apply \
 
 **前端手测**（浏览器打开 `http://127.0.0.1:8010/`）：新会话发「我要退货」→ 聊天流里出现三张订单卡片 → 点一张，卡片锁成选中态并带上订单号重发 → 流程行走到 `refund_subflow`、答复里先报订单事实 → 点「申请退款」弹出表单、原因下拉 8 个类目 → 提交后系统气泡给出受理单号。CH04 遗留的两项一起看：答复里的 `[n]` 角标点开有原文、👍/👎 点一次即锁定。
 
+## 验收命令（CH07 五条标准）
+
+验收脚本自己起库、自己装配依赖（真模型 + 真向量库），不用起服务——要看的是「每轮实际发出去什么」，日志和轮次一一对应才好 grep。**跑之前先确认没有别的进程占着向量库**（Milvus Lite 是文件锁，8010 的服务开着就会 `PermissionError: LOCK`，检索全废但日志只有一行 WARNING）。
+
+```bash
+# ①②③ 默认窗口 20 轮：不爆、不崩，且一次都不该压（装得下就不压）
+DATABASE_URL="sqlite+aiosqlite:///./data/ch07.db" VECTOR_STORE_URI="./data/ch07_milvus.db" \
+  python scripts/context_demo.py --turns 20 --expect-cascade off
+# 期望: failures 0、demotions 0、summary_triggers 0、model_ctx/history_ctx 每轮各一次、anchors (0, 0)
+
+# ②④ 演示配置 90 轮：窗口压到 18000，看完整级联（层1 降级 → 层2 攒满 → 摘要落库）
+#     45 轮不够：预算按真实用量累加，45 轮时层 2 才攒到 1000 token（预算 1693）
+DATABASE_URL="sqlite+aiosqlite:///./data/ch07.db" VECTOR_STORE_URI="./data/ch07_milvus.db" \
+  python scripts/context_demo.py --turns 90 --demo-config --expect-cascade on
+# 实测: demotions 49 → summary trigger 层2 约 1700 > 预算 1693 → done 第1段 311 token(覆盖 msg 419~511)
+#       → 再攒 1731 → done 第2段；failures 0；anchors (513, 559)
+
+# ② 靠梗概答对早期订单：级联之后问「最开始那个订单后来怎么说」
+#    （脚本第 16 题就是这句，答案里要出现早期报过的订单号 1001/1003 与对应诉求）
+grep -A2 "最开始那个订单" <日志文件>
+
+# ④ 摘要不阻塞 + 两个 ctx 必打：直接 grep 日志
+grep -c "model_ctx" <日志文件>       # 进 Agent 的轮次
+grep -c "history_ctx" <日志文件>     # 每轮一次，闲聊兜底轮也有
+grep "summary \(trigger\|start\|done\|skip\|fail\)" <日志文件>
+
+# ⑤ 侧栏多会话切换回载：浏览器开两个会话各聊两句 → 左侧点回第一个
+#    期望: 历史原文逐条回载、接着问「那它能退吗」指代仍能补全
+curl -s --noproxy '*' 'http://127.0.0.1:8010/api/v1/conversations?user_key=ch07-a&limit=5'
+curl -s --noproxy '*' 'http://127.0.0.1:8010/api/v1/conversations/<id>/messages?user_key=ch07-a'
+# 期望: 前者 {"conversations":[{conversation_id, status, preview, message_count, summarized, created_at}]}
+#       后者 {conversation_id, summarized, messages:[{role, content, tool_call_id, has_tool_calls}]}
+#       user_key 就是聊天接口的 session_id（本项目没有用户体系，见已知限制）
+```
+
+**为什么演示配置能算出 18000**：需求给的那组参数是 `MODEL_CONTEXT_WINDOW=18000 MAX_OUTPUT_TOKENS=2000 MAX_USER_INPUT_TOKENS=2000 MAX_AGENT_STEPS=3 TOOL_RESULT_MAX_TOKENS=1200 RERANK_TOP_K=5`，倒推得滑窗 5640（层 1 3947 / 层 2 1693）。实测与需求那组（5650 / 3954 / 1695）差 9~10 token，差在 system prompt 与工具定义的实测字数，算式一致——测试里用近似断言而不是把常量反标定过去。
+
+
 ## 验收命令（CH04 四条标准）
 
 ```bash
@@ -220,13 +270,14 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 328 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 376 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
 python -m tests.eval.run_rag_eval           # CH04 四策略检索 + Faithfulness + 拒答（需真模型+真库）
 python -m tests.eval.run_intent_eval        # CH05 意图识别，38 条标注样例（需真实 key）
 python -m tests.eval.run_dialogue_eval      # CH06 多轮指代 + 意图 + 怪问题兜底（需真实 key）
+python scripts/context_demo.py --turns 20 --expect-cascade off   # CH07 上下文：装得下就不压（需真模型+真库）
 ```
 
 CH04 的评估集是**生成出来的**，脚本按顺序跑（`--reset-store` 重建前会先把 MySQL 的 `vectorize_status` 退回 pending，否则旧向量状态会让块被永久跳过）：
@@ -271,7 +322,7 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `MYSQL_ROOT_PASSWORD` | — | docker-compose 的 root 密码 |
 | `DB_ECHO` | `false` | SQL 日志开关 |
 | `TOOL_TIMEOUT_SECONDS` | `10.0` | 工具执行超时 |
-| `HISTORY_TOKEN_BUDGET` | `2048` | 历史消息 token 预算 |
+| `HISTORY_TOKEN_BUDGET` | `2048` | 旧的口径单值裁剪（CH07 起由窗口倒推取代，仅遗留脚本用） |
 | `VECTOR_STORE_URI` | `./data/milvus_lite.db` | 向量库地址（不能叫 `MILVUS_URI`，与 pymilvus 内部配置撞名） |
 | `EMBEDDING_MODEL` | `BAAI/bge-m3` | 嵌入模型（本地目录或 HF 名） |
 | `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排模型（本地目录或 HF 名，~2.3G） |
@@ -279,6 +330,14 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `KB_MIN_SCORE` | `0.45` | 知识类置信度闸的分数粗筛线（dense 相似度；实测库内外重叠，只能挡明显离题的） |
 | `AGENT_MAX_STEPS` | `4` | 主力 Agent 单轮 ReAct 的步数上限 |
 | `AGENT_TOKEN_BUDGET` | `6000` | 主力 Agent 单轮 token 预算，见底即停并交出已查到的结果 |
+| `MODEL_CONTEXT_WINDOW` | `65536` | 模型上下文窗口（CH07 预算倒推的起点；换供应商必须改这个数） |
+| `MAX_OUTPUT_TOKENS` | `2000` | 单轮答复预留 |
+| `MAX_USER_INPUT_TOKENS` | `2000` | 用户单句预留 |
+| `TOOL_RESULT_MAX_TOKENS` | `1200` | 单条工具结果预留（决定 ReAct 峰值那笔） |
+| `RERANK_TOP_K` | `5` | 检索证据条数（决定证据那笔预留） |
+| `LAYER2_ASSISTANT_HEAD` | `40` | 层 2 里客服答复保留的开头字数 |
+| `CONTEXT_SUMMARY_ENABLED` | `true` | 后台摘要总开关 |
+| `CONTEXT_SUMMARY_TIMEOUT` | `60` | 单次摘要超时（秒），超时只记 `summary fail`，不影响主链路 |
 | `LOG_LEVEL` | `INFO` | 日志级别；`agent.trace` 一行一轮，验收靠它 |
 | `MINE_QA_ENABLED` | `false` | 对话挖知识定时任务开关 |
 | `MINE_QA_INTERVAL_HOURS` | `24` | 挖知识定时间隔 |
@@ -286,7 +345,7 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 
 ## 已知限制
 
-1. ~~只做单轮工具调用~~ CH05 起主力 Agent 是多步 ReAct（上限由 `AGENT_MAX_STEPS` 控），仍不做跨会话记忆与上下文压缩（CH07）。
+1. ~~只做单轮工具调用~~ CH05 起主力 Agent 是多步 ReAct（上限由 `AGENT_MAX_STEPS` 控）。CH07 起会话内上下文有正经管理（三层 + 后台摘要 + 预算倒推），但仍**不做跨会话记忆与用户画像**——每通会话独立，`user_key` 只是个会话归属键。
 2. CH04 起默认走 **hybrid_rerank**；dense 与 BM25 的分数不同量纲、RRF 分只反映名次，跨策略只能比 Recall/MRR，不能比分值。LIKE 降级路仍保留为向量库故障时的兜底。
 3. 向量库存 Milvus Lite 文件库（单机嵌入式，无 Docker 依赖）：索引定死 FLAT 暴力精确检索——一是演示量级（几百块）暴力扫更准，二是 milvus-lite 的 AUTOINDEX 走 faiss，其 Windows 窄字符文件 API 写不了中文路径，跨进程重开必崩（实踩，见 dev-notes/ch03.md）；集合存主键+向量+text(供 BM25 建索引)+category(供过滤)，原文正文一律回 MySQL 取。
 4. 挖知识的 QA 去重只做规范化精确/包含比对，语义去重仍待补；挖出的 QA 用固定分类标签「对话挖掘」，类目归并入 CH09 飞轮。
@@ -305,5 +364,10 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 17. 退款单受理即建一张「售后」工单，工单号当受理号：没有审批流、没有退款状态机、不回写订单状态。真要跑通退款得有支付侧对接，本章只到「受理」。
 18. 指代消解失败（上游抖动/JSON 不可用）会原样透传，表现是「这个能退吗」没补上订单号 → 弹订单选择器让用户点一下。兜底方向是对的（不许猜单号），但用户会多一次交互；日志里有 `指代消解失败,原样透传` 可查。
 19. checkpointer 按 `thread_id` 跨轮保留 State，所以服务层每轮用 `_TURN_RESET` 显式重置本轮字段（否则上一轮的 `order_options`/`finish_reason` 会漏进本轮 done）。加本轮字段要记得加进那张表。
+20. 上下文预算按**实测用量累加**（不是按每轮上限预留），所以级联什么时候发生取决于说了多少字：演示配置（窗口 18000）下要聊到 90 轮才压出第一段梗概。好处是不浪费窗口，代价是「聊几轮才压」不可预期。
+21. `MODEL_CONTEXT_WINDOW` 是配置写死的（默认 65536），不按模型名查表——换供应商必须手动改这个数，忘了就会低估或高估窗口。
+22. 摘要一段一条、写完不回炉重写，也没有任何质量校验：梗概里写错一个事实，它会一直躺在库里被当背景喂回去。要纠错只能人工改表。
+23. 层 2 里工具结果一律压成一行标识（`[工具结果 N 字,已省略]`），下一轮追问同一单会再查一次工具——省 token 换来一次多余调用。
+24. 层 1 降级按预算的 8 成微调，边界会随轮次移动，prompt 前缀缓存的命中率因此受影响；想稳住缓存得改成「一次挪到位、两次降级之间边界不动」，没做。
 
 设计文档：`docs/superpowers/specs/`（ch01/ch02/ch03/ch04/ch05 各一份）；实施计划：`docs/superpowers/plans/`；开发留痕：`dev-notes/ch01.md` ~ `dev-notes/ch06.md`。

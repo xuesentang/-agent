@@ -18,6 +18,7 @@ const newChatBtn = document.getElementById("new-chat");
 const sourcePanel = document.getElementById("source-panel");
 const sourceBody = document.getElementById("source-body");
 const sourceClose = document.getElementById("source-close");
+const convListEl = document.getElementById("conv-list");
 
 // 会话标识:session_id 是用户键(同一浏览器连续聊);conversation_id 由服务端
 // done 事件回传。新会话按钮置 pendingNewConversation——下一条消息带
@@ -511,6 +512,7 @@ function handleEvent(event, data, turn) {
       break;
     case "done":
       conversationId = data.conversation_id;
+      loadConversations(); // 新会话会出现在侧栏
       if (data.finish_reason === "abstain") turn.bubble.classList.add("abstained");
       renderActions(turn, data.actions);
       renderFeedback(turn);
@@ -520,6 +522,76 @@ function handleEvent(event, data, turn) {
       break;
     default:
       break;
+  }
+}
+
+/* ---------------------------------------------------------------- 多会话侧栏 */
+
+// 侧栏加载失败只降级,不影响聊天(需求 7)
+async function loadConversations() {
+  if (!convListEl) return;
+  try {
+    const resp = await fetch("/api/v1/conversations?user_key=" + encodeURIComponent(sessionId));
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    renderConversations(data.conversations || []);
+  } catch (err) {
+    convListEl.innerHTML = "";
+  }
+}
+
+function renderConversations(items) {
+  convListEl.innerHTML = "";
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "conv-item";
+    empty.textContent = "还没有会话,先聊一句吧";
+    convListEl.appendChild(empty);
+    return;
+  }
+  items.forEach((c) => {
+    const item = document.createElement("div");
+    item.className = "conv-item" + (c.conversation_id === conversationId ? " active" : "");
+    item.dataset.convId = c.conversation_id;
+    const text = document.createElement("div");
+    text.textContent = c.preview || "(空会话)";
+    if (c.summarized) {
+      const tag = document.createElement("span");
+      tag.className = "conv-tag";
+      tag.textContent = "已摘要";
+      text.appendChild(tag);
+    }
+    const meta = document.createElement("div");
+    meta.className = "conv-meta";
+    meta.textContent = c.message_count + " 条 · " + (c.created_at ? c.created_at.slice(5, 16).replace("T", " ") : "");
+    item.append(text, meta);
+    item.addEventListener("click", () => openConversation(c.conversation_id));
+    convListEl.appendChild(item);
+  });
+}
+
+// 切回旧会话:回载历史原文(接口给的是原文,不是梗概)
+async function openConversation(id) {
+  if (!id) return;
+  try {
+    const resp = await fetch(
+      "/api/v1/conversations/" + id + "/messages?user_key=" + encodeURIComponent(sessionId)
+    );
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    conversationId = id;
+    pendingNewConversation = false;
+    selectedOrderId = null;
+    messagesEl.innerHTML = "";
+    (data.messages || []).forEach((m) => {
+      if (m.role === "user") addUserBubble(m.content);
+      else if (m.role === "assistant" && m.content) addAssistantBubble(m.content);
+    });
+    if (data.summarized) addSystemBubble("这段早期对话已被压缩成梗概(原文仍在上方)");
+    loadConversations();
+    inputEl.focus();
+  } catch (err) {
+    showError("会话历史加载失败:" + err);
   }
 }
 
@@ -593,5 +665,11 @@ inputEl.addEventListener("keydown", (e) => {
 });
 newChatBtn.addEventListener("click", () => {
   pendingNewConversation = true;
+  conversationId = null;
+  selectedOrderId = null;
   messagesEl.innerHTML = "";
+  loadConversations();
 });
+
+// CH07:进页面先拉会话列表;失败静默,聊天照常可用
+loadConversations();

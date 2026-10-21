@@ -41,6 +41,13 @@ async def _mine_qa_loop() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
+    # CH07:上下文预算自检。装不下就该在启动时喊出来,而不是等用户聊到第 N 轮报 400
+    try:
+        from app.core.token_budget import log_startup_check
+
+        log_startup_check()
+    except Exception:  # noqa: BLE001 - 自检失败不阻塞启动
+        logger.exception("context budget check failed")
     # 预热 RAG 检索器:嵌入模型 + 向量库集合在首个请求前就位,
     # 否则第一条 query_faq 要在工具超时内背下模型加载,必超时。
     try:

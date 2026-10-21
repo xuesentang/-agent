@@ -19,8 +19,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolMessage
 
+from app.core.context import assemble_messages, plan_from_history, render_model_ctx
 from app.core.prompts import build_agent_system_prompt
 from app.core.tools.executor import ToolExecutor
 from app.core.tools.registry import ToolRegistry
@@ -74,7 +75,9 @@ async def run_react(
     registry: ToolRegistry,
     executor: ToolExecutor | None = None,
     history: list[BaseMessage] | None = None,
+    summary: str = "",
     evidence: str = "",
+    layer2_count: int = 0,
     max_steps: int = 4,
     token_budget: int = 6000,
     writer=None,
@@ -83,24 +86,19 @@ async def run_react(
     executor = executor or ToolExecutor(registry)
     bound = model.bind_tools(registry.for_bind())
 
-    messages: list[BaseMessage] = [
-        SystemMessage(content=build_agent_system_prompt(max_steps=max_steps)),
-    ]
-    if history:
-        messages.extend(history)
+    plan = plan_from_history(history, layer2_count=layer2_count)
+    messages: list[BaseMessage] = assemble_messages(
+        system_prompt=build_agent_system_prompt(max_steps=max_steps),
+        plan=plan,
+        question=question,
+        summary=summary,
+        evidence=evidence,
+    )
+    # 每轮把真正发出去的东西打出来(需求 6)。梗概与证据在后面那份 background 块里,
+    # 所以这里除了滑窗还要交代它们的有无——不然排查时会以为模型没见过证据。
+    logger.info(render_model_ctx(plan, summary=summary, question=question))
     if evidence:
-        # 证据与问题拼在同一条 human 消息里:不塞 system(那是每轮不变的前缀),
-        # 也不自造一条 assistant 确认语(假轮次会让后面的工具轨迹对不上号)。
-        messages.append(
-            HumanMessage(
-                content=(
-                    "【知识库检索结果】以下是为你准备的参考资料,回答时按编号引用,资料没覆盖的不要编。\n"
-                    f"{evidence}\n\n【用户问题】{question}"
-                )
-            )
-        )
-    else:
-        messages.append(HumanMessage(content=question))
+        logger.info("model_ctx evidence=%s字", len(evidence))
 
     outcome = ReactOutcome(reply="")
     for step_no in range(1, max_steps + 1):

@@ -281,3 +281,56 @@ async def test_stream_accepts_order_id_slot(client, stub_deps, monkeypatch):
     )
     assert resp.status_code == 200
     assert "event: done" in resp.text
+
+
+# ---------------------------------------------------------------- CH07 只读会话接口
+
+
+async def test_conversations_lists_new_first_with_preview(client, session):
+    from app.repositories import conversation_repo, message_repo
+
+    first = await conversation_repo.get_or_create(session, None, "u-side")
+    await message_repo.add_message(session, first.id, role="user", content="邮费是多少")
+    second = await conversation_repo.get_or_create(session, None, "u-side", force_new=True)
+    await message_repo.add_message(session, second.id, role="user", content="订单 1001 到哪了")
+
+    resp = client.get("/api/v1/conversations", params={"user_key": "u-side"})
+    assert resp.status_code == 200
+    items = resp.json()["conversations"]
+    assert [c["conversation_id"] for c in items] == [second.id, first.id]  # 新的在前
+    assert items[0]["preview"] == "订单 1001 到哪了"
+    assert items[0]["summarized"] is False
+
+
+async def test_conversations_marks_summarized(client, session):
+    from app.repositories import conversation_repo, conversation_summary_repo
+
+    conv = await conversation_repo.get_or_create(session, None, "u-side2")
+    await conversation_summary_repo.advance_anchors(
+        session, conv, summary_upto_msg_id=5, layer1_from_msg_id=6
+    )
+    resp = client.get("/api/v1/conversations", params={"user_key": "u-side2"})
+    assert resp.json()["conversations"][0]["summarized"] is True
+
+
+async def test_conversation_messages_returns_original_text(client, session):
+    from app.repositories import conversation_repo, message_repo
+
+    conv = await conversation_repo.get_or_create(session, None, "u-msgs")
+    await message_repo.add_message(session, conv.id, role="user", content="我要退货")
+    await message_repo.add_message(session, conv.id, role="assistant", content="麻烦提供订单号")
+
+    resp = client.get(
+        f"/api/v1/conversations/{conv.id}/messages", params={"user_key": "u-msgs"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [m["content"] for m in body["messages"]] == ["我要退货", "麻烦提供订单号"]
+
+
+async def test_conversation_messages_404_for_other_user(client, session):
+    from app.repositories import conversation_repo
+
+    conv = await conversation_repo.get_or_create(session, None, "u-owner")
+    resp = client.get(f"/api/v1/conversations/{conv.id}/messages", params={"user_key": "u-other"})
+    assert resp.status_code == 404
