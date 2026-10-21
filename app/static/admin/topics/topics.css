@@ -1,0 +1,90 @@
+/* 主题分布页（CH10）。与聊天页共用同一套灰阶/蓝，但不 import style.css——
+   聊天页那套布局是 flex 撑满全屏的，混进来会打架。 */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f5f6f8;
+  color: #1f2329;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1 { font-size: 18px; font-weight: 600; }
+.sub { font-size: 12px; color: #86909c; margin-left: 8px; }
+h2 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
+.tip { font-size: 12px; color: #86909c; font-weight: 400; }
+
+.right { display: flex; align-items: center; gap: 10px; }
+
+.badge {
+  font-size: 12px; padding: 3px 8px; border-radius: 10px;
+  background: #f2f3f5; color: #4e5969; border: 1px solid #e5e6eb;
+}
+.badge.ok { background: #f6ffed; border-color: #b7eb8f; color: #2f9e44; }
+.badge.bad { background: #fff1f0; border-color: #ffccc7; color: #cf1322; }
+
+button, .back {
+  font-size: 13px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid #e5e6eb; background: #fff; color: #4e5969; text-decoration: none;
+}
+button:hover, .back:hover { border-color: #c9cdd4; }
+
+.panel {
+  background: #fff; border: 1px solid #e5e6eb; border-radius: 10px; padding: 16px;
+}
+
+.stats { display: flex; gap: 26px; flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.stat b { font-size: 22px; font-weight: 600; }
+.stat span { font-size: 12px; color: #86909c; }
+
+.hint { font-size: 13px; color: #86909c; margin-top: 8px; }
+.hint:empty { display: none; }
+
+/* ---- 条形图 ---- */
+.bars { display: flex; flex-direction: column; gap: 6px; }
+
+.bar-row {
+  display: grid; grid-template-columns: 76px 1fr 62px;
+  align-items: center; gap: 10px; cursor: pointer;
+  border-radius: 6px; padding: 2px 4px;
+}
+.bar-row:hover { background: #f7f8fa; }
+.bar-row.active { background: #eef4ff; }
+.bar-row .label { font-size: 13px; color: #1f2329; }
+.bar-row .track {
+  display: block; /* span 默认 inline，inline 元素不认 width/height，条形图会整条消失 */
+  background: #f2f3f5; border-radius: 4px; height: 16px; overflow: hidden;
+}
+.bar-row .fill {
+  display: block;
+  height: 100%; background: #3370ff; border-radius: 4px;
+  transition: width .35s ease;
+}
+.bar-row .num { font-size: 12px; color: #4e5969; text-align: right; }
+.bar-row .num small { color: #a9aeb8; }
+
+/* ---- 列表 ---- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #f2f3f5; }
+th { font-size: 12px; color: #86909c; font-weight: 500; }
+td.labels { white-space: nowrap; }
+.tag {
+  display: inline-block; font-size: 12px; padding: 1px 7px; margin-right: 4px;
+  border-radius: 9px; background: #eef4ff; color: #3370ff; border: 1px solid #d6e4ff;
+}
+td.time { color: #86909c; font-size: 12px; white-space: nowrap; }
+.empty { color: #86909c; font-size: 13px; padding: 12px 6px; }

@@ -11,6 +11,7 @@ from app.models.message import Message
 from app.models.qa_extraction_staging import QaExtractionStaging
 from app.models.ticket import Ticket
 from app.models.tool_audit import ToolAuditLog
+from app.models.topic_classification import TopicClassification
 
 __all__ = [
     "Base",
@@ -24,4 +25,5 @@ __all__ = [
     "QaExtractionStaging",
     "Ticket",
     "ToolAuditLog",
+    "TopicClassification",
 ]

@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
+from app.api.topics import router as topics_router
 from app.config import get_settings
 from app.logging_setup import configure_logging
 
@@ -73,6 +74,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="电商智能客服", version="0.3.0", lifespan=lifespan)
 app.include_router(router)
+# CH10:主题分布只读接口 + 后台页(/admin/topics)。旁路功能,注册与否不影响聊天链路。
+app.include_router(topics_router)
 # CH02: 聊天页(原生 HTML/JS,Vibe Coding 交付)。mount 在路由之后注册,
 # /api/v1 更具体先匹配,互不覆盖。
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

@@ -1,0 +1,150 @@
+{"text": "这款猫砂盆寄到新疆要不要额外收运费？", "labels": ["运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0141", "dataset_version": "finetune-lab-v1"}
+{"text": "这猫砂盆恁个盖子咋拆下来洗，俺没看明白。", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0144", "dataset_version": "finetune-lab-v1"}
+{"text": "这款鸡肉冻干开封后要放冰箱冷藏吗，平时怎么保存不容易受潮？", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0143", "dataset_version": "finetune-lab-v1"}
+{"text": "项圈的扣子扣不上，一拉就弹开，这个是不是坏的？", "labels": ["质量问题"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0148", "dataset_version": "finetune-lab-v1"}
+{"text": "会员生日礼是自动发还是要用积分兑换呀？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0006", "dataset_version": "finetune-lab-v1"}
+{"text": "会员生日礼是自动发，还是要用积分兑换？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0007", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，晒单猫粮照片的时候不小心点错了，还能重新上传吗？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0079", "dataset_version": "finetune-lab-v1"}
+{"text": "我想把小程序账号和App账号合并，可以操作吗？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0042", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我买的猫窝忘记备注了，能补充备注让仓库不要放小赠品吗？", "labels": ["订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0068", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这款逗猫棒套装有参加三件八折活动吗？", "labels": ["优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0097", "dataset_version": "finetune-lab-v1"}
+{"text": "俺这个号咋登不上去了，是不是让人给挤下线了？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0020", "dataset_version": "finetune-lab-v1"}
+{"text": "这款猫窝拉链拉不上，还总卡住布料，是做工瑕疵吗？", "labels": ["质量问题"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0142", "dataset_version": "finetune-lab-v1"}
+{"text": "买大了，退了吧", "labels": ["尺码", "退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0002", "dataset_version": "finetune-lab-v1"}
+{"text": "这个逗猫棒订单能不能开纸质发票寄过来？", "labels": ["发票"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0137", "dataset_version": "finetune-lab-v1"}
+{"text": "猫碗参加618活动吗，能不能提前加购锁优惠？", "labels": ["优惠活动"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0125", "dataset_version": "finetune-lab-v1"}
+{"text": "晒单晒我家猫用猫窝的照片有奖励吗？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0110", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，猫粮里发现了几颗颜色很黑的颗粒，看起来不像正常粮，这是批次有问题吗？", "labels": ["质量问题"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0087", "dataset_version": "finetune-lab-v1"}
+{"text": "猫砂订单能先帮我改地址吗，另外快递大概什么时候送到？", "labels": ["订单修改", "物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0124", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这个满减活动是满199减30，还是每满199就减30呀？", "labels": ["优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0090", "dataset_version": "finetune-lab-v1"}
+{"text": "猫碗边缘有明显缺口，猫咪用着会不会刮嘴？", "labels": ["质量问题"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0128", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，之前攒的积分换了手机后还会不会保留？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0050", "dataset_version": "finetune-lab-v1"}
+{"text": "满减券用上了但付款时金额没变，是支付页面出问题了吗？", "labels": ["优惠活动", "支付"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0112", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这款猫砂盆配件的废砂盒还会补货吗？我找了半天都没看到能买。", "labels": ["库存补货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0095", "dataset_version": "finetune-lab-v1"}
+{"text": "猫爬架配件坏了能寄新的给我吗，补发的物流大概几天到？", "labels": ["保修维修", "物流"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0120", "dataset_version": "finetune-lab-v1"}
+{"text": "猫碗订单付款后才发现少买了一个，我想问一下能在原订单里追加一个吗？", "labels": ["订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0127", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，粉色小铃铛款项圈是不是没库存了，之后还会再上架吗？", "labels": ["库存补货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0088", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，今天买猫砂用了优惠券，如果明天活动价格更便宜，可以补差价吗？", "labels": ["优惠活动", "价保"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0053", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下猫爬架的升降柱质保多长时间，另外这笔订单还可以开票吗？", "labels": ["保修维修", "发票"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0045", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，客服的服务时间是什么时候？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0064", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我忘了登录密码，要在哪里重新设置呀？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0074", "dataset_version": "finetune-lab-v1"}
+{"text": "你家逗猫棒羽毛款还有库存没，急着给猫主子换一个。", "labels": ["库存补货"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0012", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下三文鱼冻干要怎么保存，原味那款现在没货了什么时候会补货？", "labels": ["商品信息", "库存补货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0043", "dataset_version": "finetune-lab-v1"}
+{"text": "项圈颜色拍错了，能不能直接给我换个粉色的？", "labels": ["退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0149", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，猫砂盆还没有安装，现在我不想要了可以退款吗？", "labels": ["退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0086", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，想和你们进行商务合作的话，应该联系哪位呢？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0065", "dataset_version": "finetune-lab-v1"}
+{"text": "猫碗收到后我后悔了，没用过，申请七天无理由退货可以吧？", "labels": ["退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0126", "dataset_version": "finetune-lab-v1"}
+{"text": "猫砂盆想退货，来回运费是我出还是你们承担？", "labels": ["退换货", "运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0122", "dataset_version": "finetune-lab-v1"}
+{"text": "我不小心点了匿名评价，后面还能取消匿名吗？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0038", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，猫爬架订单的运费可以和商品金额一起开到发票里吗？", "labels": ["发票", "运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0082", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，为什么我注册时总是提示手机号已被占用？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0049", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，买猫窝能不能货到付款，我不太想提前付款。", "labels": ["支付"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0051", "dataset_version": "finetune-lab-v1"}
+{"text": "猫砂盆那个白色大号断货了，什么时候能补上呀？", "labels": ["库存补货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0123", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，下单的冻干显示今天到，现在还没开始派送，是不是要延迟了？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0048", "dataset_version": "finetune-lab-v1"}
+{"text": "我的猫粮订单物流一直显示运输中，能帮忙催一下快递吗？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0107", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这款猫砂盆用起来会不会吵，晚上铲屎的声音大吗？", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0094", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，项圈的扣子完全扣不牢，猫一甩头就会掉下来，是不是有质量问题？", "labels": ["质量问题"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0104", "dataset_version": "finetune-lab-v1"}
+{"text": "猫爬架太占地方想退货，退回去的运费谁出？", "labels": ["退换货", "运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0118", "dataset_version": "finetune-lab-v1"}
+{"text": "我刚付完猫碗的钱，能不能查下有没有支付成功？", "labels": ["支付"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0039", "dataset_version": "finetune-lab-v1"}
+{"text": "快递单号在哪里看呀，我找不到猫窝那单的物流。", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0037", "dataset_version": "finetune-lab-v1"}
+{"text": "这款猫爬架底座尺寸多大，小户型客厅放得下吗？", "labels": ["尺码"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0139", "dataset_version": "finetune-lab-v1"}
+{"text": "麻烦帮我接一下人工，我想把刚下的订单改个收件电话。", "labels": ["其他", "订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0150", "dataset_version": "finetune-lab-v1"}
+{"text": "俺想买两箱猫砂，送到俺这疙瘩还包邮不？", "labels": ["运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0017", "dataset_version": "finetune-lab-v1"}
+{"text": "猫爬架白色大号还有现货吗，没有的话什么时候补货？", "labels": ["尺码", "库存补货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0119", "dataset_version": "finetune-lab-v1"}
+{"text": "我想囤几箱猫罐头，有没有大额券或者第二件半价活动？", "labels": ["优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0041", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这款鸡肉冻干开封后需要放到冰箱冷藏吗？", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0098", "dataset_version": "finetune-lab-v1"}
+{"text": "请问你们喵喵优选的价保期一般是多久，我这单猫砂盆还在保价内吗？", "labels": ["价保"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0135", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这袋猫粮我想退掉，退货完成后之前写的评价还会保留吗？", "labels": ["评价", "退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0101", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，新注册的会员有积分礼包吗，首次购买冻干可以使用吗？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0078", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我买的猫窝颜色选错了，能换成灰色那款吗？", "labels": ["退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0069", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我家猫大概8斤，买你们家的猫窝选M码还是L码比较合适？", "labels": ["尺码"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0073", "dataset_version": "finetune-lab-v1"}
+{"text": "冻干到手还没拆就便宜了十几块，你们有价保不？", "labels": ["价保"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0021", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，三层原木色的猫爬架还会补货吗？我已经蹲了好几天了。", "labels": ["库存补货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0047", "dataset_version": "finetune-lab-v1"}
+{"text": "我的猫抓板物流停在中转站没动静，能不能帮我联系快递问一下？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0106", "dataset_version": "finetune-lab-v1"}
+{"text": "纸质发票可以随猫粮包裹一起寄过来吗？", "labels": ["发票"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0132", "dataset_version": "finetune-lab-v1"}
+{"text": "俺想问问那袋三文鱼猫粮还有货不，啥时候能再补上啊？", "labels": ["库存补货"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0019", "dataset_version": "finetune-lab-v1"}
+{"text": "店铺名片或者联系方式能发我一下不？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0034", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这单冻干我不想要了，订单还没发货能取消吗？", "labels": ["订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0093", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下账号实名认证在哪里操作，我找了半天都没看到。", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0046", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，海外直邮的猫零食通常需要几天才能清关到国内？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0080", "dataset_version": "finetune-lab-v1"}
+{"text": "俺寻思给小奶猫买个窝，最小号会不会还是太老大了？", "labels": ["尺码"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0016", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这个猫砂盆什么时候能送到啊，娃儿等得很着急。", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0092", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，你们家的自动猫砂盆电机质保多长时间，买了半年后还可以免费维修吗？", "labels": ["保修维修"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0058", "dataset_version": "finetune-lab-v1"}
+{"text": "俺买的猫窝里头线头一大堆还掉棉花，这是啥质量啊？", "labels": ["质量问题"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0013", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，买逗猫棒付款时一直在转圈，付不出去是怎么回事？", "labels": ["支付"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0052", "dataset_version": "finetune-lab-v1"}
+{"text": "刚才手滑把收件人名字写成我家猫名了，能改回我的名字吗？", "labels": ["订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0022", "dataset_version": "finetune-lab-v1"}
+{"text": "猫抓板那个L码和XL码差多少，我家两只猫一起用买哪个合适？", "labels": ["尺码"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0116", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，自动猫砂盆的显示屏黑屏了，你们这款质保多长时间，可以维修吗？", "labels": ["质量问题", "保修维修"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0089", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，猫砂盆的评价不小心删掉了，还可以重新发一条吗？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0084", "dataset_version": "finetune-lab-v1"}
+{"text": "可以加你们的企业微信咨询吗？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0024", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，匿名评价后商家还会知道是我写的吗？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0062", "dataset_version": "finetune-lab-v1"}
+{"text": "这袋猫粮配方里有没有谷勿和豆类啊？", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0146", "dataset_version": "finetune-lab-v1"}
+{"text": "晒丹猫粮照片的时候点错了，能重新上传不？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0109", "dataset_version": "finetune-lab-v1"}
+{"text": "块递显示揽收后就没动静了，能帮我催一下吗？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0031", "dataset_version": "finetune-lab-v1"}
+{"text": "会员积分能和优惠券一起抵扣猫零食订单吗？", "labels": ["优惠活动", "会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0008", "dataset_version": "finetune-lab-v1"}
+{"text": "介个冻干给小猫崽吃要不要先泡水，直接喂中不中？", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0003", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我这个猫碗自动称重不准确了，还在保修期内可以校准或者换新吗？", "labels": ["保修维修"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0076", "dataset_version": "finetune-lab-v1"}
+{"text": "俺家娃把账号退出了，现在验证码发不来，咋整啊？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0015", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我登录之后头像和昵称都变了，是不是登错账号了？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0075", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这个猫爬架不太合适，想换成其他款式要怎么操作？", "labels": ["退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0091", "dataset_version": "finetune-lab-v1"}
+{"text": "自动猫砂盆显示屏黑屏了，你们这款保修多久，能维修吗？", "labels": ["质量问题", "保修维修"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0134", "dataset_version": "finetune-lab-v1"}
+{"text": "这单冻干已经揽收了吗，能帮我查下快递进度不？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0138", "dataset_version": "finetune-lab-v1"}
+{"text": "这猫窝价保是不是只有七天，超过一天就不能补差了吗？", "labels": ["价保"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0145", "dataset_version": "finetune-lab-v1"}
+{"text": "店里有没有新手养猫交流群，能拉我一下吗？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0033", "dataset_version": "finetune-lab-v1"}
+{"text": "晒单猫窝实拍图有没有什么格式要求？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0111", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，你们家的猫砂盆寄到新疆需要额外补运费吗？", "labels": ["运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0057", "dataset_version": "finetune-lab-v1"}
+{"text": "你家冻干拼团价和普通优惠券能一起使不？", "labels": ["优惠活动"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0011", "dataset_version": "finetune-lab-v1"}
+{"text": "尺码不合适想退货", "labels": ["尺码", "退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0032", "dataset_version": "finetune-lab-v1"}
+{"text": "会原专享价是不是必须达到某个等级才能看到？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0005", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下怎么转人工啊，我点了半天还是机器人在回复？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0044", "dataset_version": "finetune-lab-v1"}
+{"text": "登路不上去，一直转圈圈，是不是系统出问题了？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0131", "dataset_version": "finetune-lab-v1"}
+{"text": "咱这会员等级是咋算的，买个猫爬架能升一级不？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0026", "dataset_version": "finetune-lab-v1"}
+{"text": "咋个回事嘛，我用手机号登录一直转圈圈进不去？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0025", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，偏远地区的附加运费在哪里可以查看？", "labels": ["运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0059", "dataset_version": "finetune-lab-v1"}
+{"text": "喵喵优选客服一般几点上班呀？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0028", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，刚才猫粮订单支付失败了，还可以重新支付一次吗？", "labels": ["支付"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0060", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我下的冻干订单能不能修改收货地址，另外优惠券还能补用吗？", "labels": ["订单修改", "优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0066", "dataset_version": "finetune-lab-v1"}
+{"text": "猫爬架买完降价能补差价吗，另外订单地址还能改一下不？", "labels": ["价保", "订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0117", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这袋猫粮我家主子不吃，我想换个口味可以吗？", "labels": ["退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0100", "dataset_version": "finetune-lab-v1"}
+{"text": "咱这猫粮好评截图上传后，系统咋还说未完成评价呢？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0027", "dataset_version": "finetune-lab-v1"}
+{"text": "喵喵优选账号可以注销吗，注销后还能重新注册吗？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0029", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，会员积分可以和猫砂盆优惠券一起抵扣吗？", "labels": ["优惠活动", "会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0054", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我在喵喵优选买的猫粮能开发票吗，在哪里申请？", "labels": ["发票"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0071", "dataset_version": "finetune-lab-v1"}
+{"text": "为什么我结算猫粮时优惠券选上了，最后支付金额还是没减？", "labels": ["支付", "优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0001", "dataset_version": "finetune-lab-v1"}
+{"text": "猫砂快递一直显是运输中，三天没更新正常吗？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0121", "dataset_version": "finetune-lab-v1"}
+{"text": "猫窝的线缝裂开了，我想顺便问一下这个尺寸真的是60厘米吗？", "labels": ["质量问题", "尺码"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0130", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，猫砂盆申请退款后通常多久能到账？", "labels": ["退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0083", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，你们客服通常是几点上班、几点下班呀？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0056", "dataset_version": "finetune-lab-v1"}
+{"text": "开票信息里税号填错了，现在还能重新开吗？", "labels": ["发票"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0036", "dataset_version": "finetune-lab-v1"}
+{"text": "喵喵优选账号能注销吗，注销后还能重新注册不？", "labels": ["账号"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0030", "dataset_version": "finetune-lab-v1"}
+{"text": "会员积分能直接抵扣买冻干的钱吗，抵扣比例是多少？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0009", "dataset_version": "finetune-lab-v1"}
+{"text": "老板，我想问一下猫粮订单电话填错了，怎么改呀？", "labels": ["订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0133", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，逗猫棒羽毛款是缺货了吗，之后还会卖吗？", "labels": ["库存补货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0103", "dataset_version": "finetune-lab-v1"}
+{"text": "前天拍的猫粮今天直播间更便宜，这种算不算价保范围？", "labels": ["价保"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0023", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这款猫粮的主要成分有哪些，今天下单可以使用满减优惠券吗？", "labels": ["商品信息", "优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0096", "dataset_version": "finetune-lab-v1"}
+{"text": "我想买猫抓板和逗猫棒，凑单能不能减钱？", "labels": ["优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0040", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，刚收到猫抓板就发现同款降价了，可以按现在的价格给我补差价吗？", "labels": ["价保"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0061", "dataset_version": "finetune-lab-v1"}
+{"text": "我拍的猫爬架现在页面价格更低了，差价怎么补给我？", "labels": ["价保"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0105", "dataset_version": "finetune-lab-v1"}
+{"text": "猫抓板和猫爬架有什么区别", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "val", "review_status": "inherited", "id": "test-0113", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我这单猫爬架预计今天能送到吗？家里没人，想提前知道送达时间。", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0077", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，逗猫棒的伸缩杆坏了，是走保修换新，还是让我退货后重新下单？", "labels": ["保修维修", "退换货"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0102", "dataset_version": "finetune-lab-v1"}
+{"text": "请问猫砂盆入口高度几厘米，短腿猫跨进去费劲吗？", "labels": ["尺码"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0136", "dataset_version": "finetune-lab-v1"}
+{"text": "这款猫爬架运费怎么这么贵，能不能免一下？", "labels": ["运费"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0140", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，会员评价猫零食会赠送积分吗？积分是自动到账还是需要领取？", "labels": ["评价", "会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0055", "dataset_version": "finetune-lab-v1"}
+{"text": "我的积份昨天还有一百多，今天咋少了？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0108", "dataset_version": "finetune-lab-v1"}
+{"text": "付款时提示交易风险，猫粮订单付不了款要咋弄？", "labels": ["支付"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0004", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，这袋冻干刚打开就有一股酸味，是不是已经坏了啊？", "labels": ["质量问题"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0099", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我买的冻干都三天了还没消息，什么时候给我发货呀？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0067", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我刚买的猫砂盆收货地址填错了，能帮我改一下吗？", "labels": ["订单修改"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0070", "dataset_version": "finetune-lab-v1"}
+{"text": "退猫爬架的话，寄回去的运费是我出还是你们出？", "labels": ["退换货", "运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0147", "dataset_version": "finetune-lab-v1"}
+{"text": "你们的无谷猫粮主要蛋白来源是什么，玻璃胃猫能吃吗？", "labels": ["商品信息"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0010", "dataset_version": "finetune-lab-v1"}
+{"text": "猫抓板显示运输中好几天了，是不是丢件了啊？", "labels": ["物流"], "origin": "legacy_unknown", "source_split": "test", "review_status": "inherited", "id": "test-0115", "dataset_version": "finetune-lab-v1"}
+{"text": "俺前几天买的猫零食，想补个评价，入口搁哪儿找？", "labels": ["评价"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0014", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，猫抓板这么轻，为什么结账的时候还要收运费呀？", "labels": ["运费"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0081", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，喵喵优选的积分具体要怎么使用，买猫粮时可以直接抵扣吗？", "labels": ["会员积分"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0063", "dataset_version": "finetune-lab-v1"}
+{"text": "猫抓板底座裂开后还能保修吗，还是只能自己粘？", "labels": ["保修维修"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0114", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，我家橘猫挺胖的，十五六斤，那个猫窝买大号可以吗？", "labels": ["尺码"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0072", "dataset_version": "finetune-lab-v1"}
+{"text": "我想问一下，猫砂盆订单可以开增值税专用发票吗？", "labels": ["发票"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0085", "dataset_version": "finetune-lab-v1"}
+{"text": "俺想问问你们这边有真人不，别老是机器人跟俺唠嗑行不？", "labels": ["其他"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0018", "dataset_version": "finetune-lab-v1"}
+{"text": "开发票能按优惠券满减后的实付金额开吗，这个券还能叠加用吗？", "labels": ["发票", "优惠活动"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0035", "dataset_version": "finetune-lab-v1"}
+{"text": "猫窝的加热开关接触不良，寄修前需要先拍视频给你们看吗？", "labels": ["保修维修"], "origin": "legacy_unknown", "source_split": "train", "review_status": "inherited", "id": "test-0129", "dataset_version": "finetune-lab-v1"}

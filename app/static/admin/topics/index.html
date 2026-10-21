@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>主题分布 · 小智后台</title>
+  <link rel="stylesheet" href="/admin/topics/topics.css" />
+</head>
+<body>
+  <header>
+    <div class="left">
+      <h1>主题分布</h1>
+      <span class="sub">低置信度问题的 17 类归类结果</span>
+    </div>
+    <div class="right">
+      <span id="model-badge" class="badge" title="分类器状态">…</span>
+      <button id="refresh" type="button">刷新</button>
+      <a class="back" href="/">← 回客服页</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" id="summary-panel">
+      <div class="stats" id="stats"></div>
+      <p class="hint" id="hint"></p>
+    </section>
+
+    <section class="panel">
+      <h2>各类目问题量 <span class="tip">（点一行看这一类的问题）</span></h2>
+      <div id="bars" class="bars"></div>
+    </section>
+
+    <section class="panel">
+      <h2 id="list-title">最近归类</h2>
+      <table id="list">
+        <thead>
+          <tr><th>原话</th><th>标签</th><th>归类时间</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/admin/topics/topics.js"></script>
+</body>
+</html>

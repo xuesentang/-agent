@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     mcp_tool_ttl_seconds: int = 30
     # 外部 MCP 工具的调用超时通常比内置长(多一跳网络)
     mcp_timeout_seconds: float = 20.0
+    # CH10: 主题分类器(旁路,主链路不调)。模型资产 400MB+ 不入 git,
+    # 由 scripts/fetch_topic_model.py 拉到这个目录并校验哈希。
+    topic_enabled: bool = False
+    topic_model_dir: str = "./models/topic_classifier"
+    # 阈值是验证集上扫出来的,不是 0.5;换模型必须重新扫
+    topic_threshold: float = 0.20
+    # 攒够一批归一次:脚本每次最多取这么多条未归类问题
+    topic_batch_size: int = 50
 
 
 @lru_cache

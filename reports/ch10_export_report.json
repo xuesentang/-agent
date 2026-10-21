@@ -1,0 +1,11 @@
+{
+  "model": "D:\\客服agent\\models\\topic_classifier\\run\\best_model",
+  "onnx": "models\\_export_check\\model.onnx",
+  "onnx_bytes": 409335416,
+  "export_seconds": 6.49,
+  "checked_rows": 150,
+  "max_abs_logit_diff": 6.377696990966797e-06,
+  "threshold": 0.2,
+  "threshold_mismatches": 0,
+  "parity_passed": true
+}

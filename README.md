@@ -1,6 +1,6 @@
 # 电商智能客服系统
 
-电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）+ CH07 会话上下文管理（三层结构、异步摘要、预算倒推、多会话侧栏）+ CH08 工具系统（注册中心、执行引擎、审计、MCP 接入、写操作确认流）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
+电商客服 Agent 系列：CH01 纯对话 + CH02 Function Calling 工具链 + CH03 RAG 知识库 + CH04 混合检索与重排（含引用溯源、拒答、评估体系）+ CH05 工作流编排与主力 Agent + CH06 分流器正式版（指代消解、意图八分类、退款子流程、槽位回填）+ CH07 会话上下文管理（三层结构、异步摘要、预算倒推、多会话侧栏）+ CH08 工具系统（注册中心、执行引擎、审计、MCP 接入、写操作确认流）+ CH10 微调主题分类器（RoBERTa-wwm-ext 17 类多标签、LLM 预标 + 人工抽审、旁路批量归类、主题分布页）。FastAPI + SQLAlchemy(Async) + LangChain + **LangGraph**，模型接入走 OpenAI 协议（当前配置为 DeepSeek-V4.1-Flash，换供应商只改 `.env`）。
 
 ## 功能
 
@@ -16,6 +16,10 @@
 | `GET /api/v1/conversations/{id}/messages` | 只读：回载某会话的历史原文（不是梗概），切回旧会话用 |
 | `POST /api/v1/chat/extract` | 售后描述结构化抽取：`order_id` / `claim_type`（八枚举）/ `expected_solution`，未提及为 `null` |
 | `GET /` | 聊天页（原生 HTML/JS）：消息流、流式渲染、节点流程行、可点选订单卡片、退款单表单、工具轨迹徽章、可点引用角标（点开看来源章节与原文）、每条回答的 👍/👎 反馈 |
+| `GET /api/v1/topics/distribution` | CH10 只读：17 类命中数 + 占比 + 已归类/池内/去重后三个规模数 + 分类器状态（不触发加载模型） |
+| `GET /api/v1/topics/latest` | CH10 只读：最近归类的问题（原话 + 标签 + 时间） |
+| `GET /api/v1/topics/by-label` | CH10 只读：某类目下的问题；类目名不在 17 类里返回空列表而不是 500 |
+| `GET /admin/topics` | CH10 主题分布页：上排 17 类横向条形图（点一行看该类问题），下排最近归类列表 |
 
 **RAG 进阶**（CH04）：
 
@@ -297,6 +301,56 @@ python scripts/tool_demo.py confirm --real-model
 
 `tool_demo.py` 默认落 CH07 那套开发库（`./data/ch07.db` + `./data/ch07_milvus.db`），需要覆盖就传 `DATABASE_URL` / `VECTOR_STORE_URI`。
 
+## 验收命令（CH10 三条标准）
+
+模型资产（ONNX 409MB + tokenizer）不入 Git，先拉一次并用 `SHA256SUMS.txt` 校验：
+
+```bash
+python scripts/fetch_topic_model.py --from D:/python-kefu-agent/finetune-lab --with-base
+# 校验不过直接报错退出；--with-base 连 RoBERTa 基座一起搬（只有重训才需要）
+```
+
+```bash
+# ① 测试集各类 F1 + 混淆矩阵报告
+python scripts/eval_topic_model.py
+# 期望: test rows=150 micro_f1=0.9687 macro_f1=0.9681 threshold=0.2
+#       → reports/ch10_topic_eval.md（每类 P/R/F1/support + tp/fp/fn/tn），与 lab 基准差 0.0000（容差 0.01，超了脚本直接失败退出）
+
+# ② 真实问题跑归类 + 后台看分布
+TOPIC_ENABLED=true python scripts/classify_topics.py --dry-run --batch 8   # 先看标签对不对，不写库
+TOPIC_ENABLED=true python scripts/classify_topics.py --batch 100           # 写 topic_classifications
+# 期望: 取到 39 条 / 写入 39 条 + 条形图（尺码 21、退换货 19、运费 7、保修维修 7、订单修改 1、其他 1）
+#       再跑一遍 → 「跳过:池子里没有未归类的问题」（uk_question_id 幂等，不长新行）
+
+# 后台分布页（二选一）
+python scripts/preview_topics_page.py --port 8123    # 只挂分布页，不预热 RAG（内存紧时用这个）
+# 主应用已在跑就打开 http://127.0.0.1:8010/admin/topics —— 同一个页面
+# 期望: 上排 17 类横向条形（0 的类也画），下排最近归类列表，点一行按类目过滤
+
+# ③ 多诉求句命中多类
+python scripts/topic_demo.py multi
+# 期望: 4/4 通过 —— 「买大了想退」→ 退换货 0.95 + 尺码 0.65；
+#       「退货运费谁出，优惠券还退吗」→ 运费 0.96 + 优惠活动 0.93 + 退换货 0.47
+python scripts/topic_demo.py predict "买大了想退"      # 单句看 17 类分数
+```
+
+训练/数据线（可选，证明「能一键重训重导」，不跑也能用已交付模型）：
+
+```bash
+python scripts/train_topic_model.py benchmark --samples 16      # 2.0 秒/批，峰值 1.99GB
+python scripts/train_topic_model.py full --train-samples 1500 --epochs 8   # 真重训（需 torch+transformers）
+python scripts/export_topic_onnx.py                             # 导出 ONNX + 逐条比 logits
+python scripts/prepare_topic_data.py                            # 数据四步（清洗/归并/80-10-10/只增强训练集）→ v2
+python scripts/prelabel_topics.py --review 10                    # LLM 照术语表预标 + 抽 10 条出人工清单
+python scripts/prelabel_topics.py --synth 20                     # 每类造 20 条给 v2 补量
+python scripts/prelabel_topics.py --apply reports/ch10_prelabel/review-*.jsonl   # 核完算预标准确率
+```
+
+导出的实测结论（`reports/ch10_export_report.json`）：`max_abs_logit_diff 6.38e-06`、
+`threshold_mismatches 0`，用导出件重跑 ① 仍是 **0.9687**——导出链路与交付件等价。
+
+**前端手测**：打开 `/admin/topics`，页面顶部三个数（已归类/池内/去重后），若「池内 39 行只对应 13 个不同问题」，页面会挂一行提示——这是 CH07/CH08 反复测试把同一问题多次入池造成的，不是统计口径写错。
+
 ## 验收命令（CH04 四条标准）
 
 ```bash
@@ -326,7 +380,7 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 418 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 476 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
@@ -335,6 +389,7 @@ python -m tests.eval.run_intent_eval        # CH05 意图识别，38 条标注�
 python -m tests.eval.run_dialogue_eval      # CH06 多轮指代 + 意图 + 怪问题兜底（需真实 key）
 python scripts/context_demo.py --turns 20 --expect-cascade off   # CH07 上下文：装得下就不压（需真模型+真库）
 python scripts/tool_demo.py register        # CH08 工具系统：注册即上线 / MCP 接管 / 韧性 / 确认流
+python scripts/topic_demo.py multi          # CH10 主题分类器：多诉求句命中多类
 ```
 
 CH04 的评估集是**生成出来的**，脚本按顺序跑（`--reset-store` 重建前会先把 MySQL 的 `vectorize_status` 退回 pending，否则旧向量状态会让块被永久跳过）：
@@ -349,6 +404,16 @@ python scripts/spotcheck_eval.py --auto 12  # 人工抽检材料（完整答案 
 ```
 
 eval 阈值 90%。最近真实运行：CH01 抽取 12/13 = 92%；CH02 工具选择 **13/13 = 100%**（连跑两轮稳定）；CH03 换说法召回 **14/14 = 100%**（真 BGE-M3 + Milvus，Top-5 命中判定）；CH05 意图识别 **38/38 = 100%**；CH06 多轮意图 **16/16**、指代补全 **8/8**、怪问题落「其他」**5/5**（`reports/ch06_dialogue.md`）。
+
+CH10 不是 eval 集而是**冻结测试集 + 每类指标**（150 条，ONNX 推理，阈值 0.20 由验证集扫出）：
+
+| 指标 | 值 |
+|---|---|
+| micro-F1 / macro-F1 | **0.9687 / 0.9681** |
+| 与 lab 基准差 | +0.0000（容差 0.01，超了脚本报错退出） |
+| 导出件 vs PyTorch | 最大 logit 差 6.38e-06，阈值判定不一致 0 条 |
+
+每类 P/R/F1/support 与 tp/fp/fn/tn 全在 `reports/ch10_topic_eval.md`。**这个分数只说明「v1 冻结集分布上一致」**：语料是 legacy 合成句、标签 inherited，真实池子 13 个问题里实测 12 个标对（错的那条见已知限制 26）。
 
 CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真重排）：
 
@@ -403,6 +468,10 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `MCP_SERVERS` | 空 | `名字=URL` 逗号分隔，如 `logistics=http://127.0.0.1:8121/mcp,aftersale=http://127.0.0.1:8122/mcp` |
 | `MCP_TOOL_TTL_SECONDS` | `30` | 工具清单缓存时长：Server 侧加工具后最多等这么久，客服服务不用重启 |
 | `MCP_TIMEOUT_SECONDS` | `20.0` | MCP 调用超时（走同一个执行引擎的超时） |
+| `TOPIC_ENABLED` | `false` | 主题归类旁路总开关。关着时 `classify_pending` 直接返回「跳过」，主链路本来就不调它 |
+| `TOPIC_MODEL_DIR` | `./models/topic_classifier` | ONNX + tokenizer 目录（`/models/` 已 gitignore，用 `fetch_topic_model.py` 拉） |
+| `TOPIC_THRESHOLD` | `0.20` | 多标签判定阈值。**在验证集上扫出来的**，别按测试集调——调了分数就不可信 |
+| `TOPIC_BATCH_SIZE` | `50` | 一批归多少条；定时任务配 `--min-batch` 攒够再跑 |
 
 ## 已知限制
 
@@ -433,5 +502,13 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 22. 摘要一段一条、写完不回炉重写，也没有任何质量校验：梗概里写错一个事实，它会一直躺在库里被当背景喂回去。要纠错只能人工改表。
 23. 层 2 里工具结果一律压成一行标识（`[工具结果 N 字,已省略]`），下一轮追问同一单会再查一次工具——省 token 换来一次多余调用。
 24. 层 1 降级按预算的 8 成微调，边界会随轮次移动，prompt 前缀缓存的命中率因此受影响；想稳住缓存得改成「一次挪到位、两次降级之间边界不动」，没做。
+25. CH10 的模型是在 **legacy 合成语料**（v1 冻结集 2614/150/150，≈86:5:5）上训的，不是飞轮池里的真实问题；标注 `review_status=inherited` 表示标签沿袭自旧语料、没有逐条人工复核。测试集 micro-F1 0.9687 只说明「在这个分布上一致」，不等于线上准确率。
+26. **真实问题上的短板（实测）**：13 个不同问题里 12 个标对，错的那个是「订单 1001 的鞋子穿了两次就开胶，帮我建个工单申请售后」→ 模型给「订单修改 0.55 + 其他 0.31」，应为「质量问题 + 退换货」。原因是「建个工单」里的「订单」二字把模型带跑偏了，v1 语料里没有这种真实长句。
+27. **多诉求互相稀释**：两个诉求并列稳（「买大了想退」退换货 0.95 + 尺码 0.65），**三个诉求挤在短句里会掉类**——「买大了想退，运费谁出」只剩退换货 0.70 + 运费 0.94，尺码掉出前四（<0.1）。这不是阈值能救的（降到 0.05 也捞不回来），根因是 64 token 短句里特征互相压。要救得在训练集补三诉求样本，本章没做。
+28. 多标签的**标签间相互独立**（sigmoid + 阈值），17 类之间没有任何约束：「其他」可以和具体类目同时命中（池里确实出现了），统计时按行计、不互斥。
+29. 阈值 `0.20` 是牺牲精确率换召回：标签多打一类比漏一类好（分布页是「哪类问题堆得多」的粗口径，不是自动派单依据）。真要用于派单得把阈值调到验证集 F1 最优点并逐类设阈值，没做。
+30. 池内问题**重复入池**（39 行只对应 13 个不同问题，CH07/CH08 反复测试所致），分布按行统计；接口同时给 `distinct` 但**没有做入池去重**——去重逻辑该在写入侧（`low_confidence_questions`），不在统计侧掩盖。
+31. `models/` 与 `data/` 都在 gitignore 里：拿到仓库要先用 `fetch_topic_model.py` 拉 409MB 模型，否则归类直接跳过（`TopicModelUnavailable`，服务不会挂）。抓取脚本依赖 lab 目录存在，跨机器复现需要自备 ONNX。
+32. 训练/导出脚本**实跑过但没重训交付模型**：`train_topic_model.py full` 只验到「链路能跑」（benchmark 16 条），真重训在 2614 条 CPU 上约需数小时，本章没跑完整轮；交付的 ONNX 与「一键重训」产物不是同一份文件，只保证导出脚本能用 lab 的 `best_model` 复现出等价件（logit 差 6.4e-06）。
 
-设计文档：`docs/superpowers/specs/`（ch01/ch02/ch03/ch04/ch05 各一份）；实施计划：`docs/superpowers/plans/`；开发留痕：`dev-notes/ch01.md` ~ `dev-notes/ch06.md`。
+设计文档：`docs/superpowers/specs/`（ch01/ch02/ch03/ch04/ch05/ch07/ch08/ch10 各一份）；实施计划：`docs/superpowers/plans/`；开发留痕：`dev-notes/ch01.md` ~ `dev-notes/ch10.md`。
