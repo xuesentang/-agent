@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>小智 · 电商智能客服 — 现实参照（Intercom Fin 迁移）</title>
+<style>
+:root{
+  --paper:#f7f4ec;
+  --surface:#fffdf7;
+  --fill:#eee7d8;
+  --fill-line:#e0d7c2;
+  --ink:#1b1a16;
+  --ink2:#4b4740;
+  --ink3:#776f61;
+  --line:#e5ded0;
+  --line2:#d6cdb9;
+  --accent:#b23a00;
+  --accent-soft:#fbece1;
+  --accent-line:#edd6c6;
+  --ok:#2f6b45;
+  --ok-soft:#eef5ee;
+  --run:#8a5a00;
+  --run-soft:#fdf7ea;
+  --mono:ui-monospace,"SF Mono",Consolas,"Cascadia Mono",monospace;
+  --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,-apple-system,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;overflow:hidden;background:var(--paper);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:1.7;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+button{font-family:inherit;color:inherit}
+::selection{background:#f3ddcc}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+.app{height:100vh;display:grid;grid-template-rows:54px 1fr;--panel-w:348px}
+
+/* ───────── topbar ───────── */
+.topbar{
+  display:flex;align-items:center;gap:14px;padding:0 18px;
+  border-bottom:1px solid var(--line);background:var(--paper);
+}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.mark{position:relative;width:19px;height:19px;border:1.5px solid var(--ink);border-radius:2px;flex:none}
+.mark::before{content:"";position:absolute;inset:4px;background:var(--ink)}
+.mark::after{content:"";position:absolute;right:-4px;bottom:-4px;width:5px;height:5px;background:var(--accent)}
+.brand-name{font-size:17px;font-weight:600;letter-spacing:.06em}
+.brand-sub{
+  font-size:12px;color:var(--ink3);letter-spacing:.02em;line-height:1;
+  padding-left:13px;border-left:1px solid var(--line2);white-space:nowrap;
+}
+.status{display:flex;align-items:center;gap:8px;margin-left:14px;padding-left:14px;border-left:1px solid var(--line2)}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+.status .mono{font-size:12px;color:var(--ink3);letter-spacing:.01em;white-space:nowrap}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.top-link{
+  font-size:12.5px;color:var(--ink2);text-decoration:underline;
+  text-decoration-color:var(--line2);text-underline-offset:4px;
+  padding:4px 8px;border-radius:3px;
+  transition:background .14s,color .14s;
+}
+.top-link:hover{background:var(--fill);color:var(--accent);text-decoration-color:var(--accent)}
+.top-link:active{background:var(--line2)}
+.btn-ghost{
+  height:29px;padding:0 12px;border:1px solid var(--line2);background:var(--surface);
+  border-radius:4px;font-size:12.5px;letter-spacing:.02em;cursor:pointer;
+  transition:background .14s,border-color .14s,color .14s,transform .08s;
+}
+.btn-ghost:hover{border-color:var(--ink);background:var(--ink);color:var(--surface)}
+.btn-ghost:active{transform:translateY(1px)}
+
+/* ───────── body grid ───────── */
+.body{
+  display:grid;grid-template-columns:76px minmax(0,1fr) var(--panel-w);
+  min-height:0;transition:grid-template-columns .18s ease;
+}
+.app.panel-off{--panel-w:46px}
+
+/* ───────── rail ───────── */
+.rail{
+  position:relative;z-index:20;border-right:1px solid var(--line);
+  display:flex;flex-direction:column;padding:13px 8px 10px;gap:5px;
+}
+.rail-head{
+  font-size:12px;color:var(--ink3);letter-spacing:.1em;text-align:center;
+  padding-bottom:9px;margin-bottom:4px;border-bottom:1px solid var(--line);
+}
+.rail-head b{display:block;font-family:var(--mono);font-size:12px;color:var(--ink2);font-weight:400;letter-spacing:.06em}
+.conv-item{
+  position:relative;display:block;width:100%;height:54px;padding:8px 9px;
+  border:1px solid transparent;border-radius:7px;background:transparent;
+  text-align:left;cursor:pointer;transition:background .14s,border-color .14s;
+}
+.conv-item:hover{background:#fbf7ee;border-color:var(--line)}
+.conv-item.active{background:var(--surface);border-color:var(--line2);box-shadow:0 1px 0 rgba(40,30,10,.03)}
+.conv-num{font-family:var(--mono);font-size:12.5px;color:var(--ink3);letter-spacing:.06em;line-height:1}
+.conv-item.active .conv-num{color:var(--accent)}
+.conv-dot{
+  position:absolute;right:9px;bottom:9px;width:6px;height:6px;border-radius:50%;
+  background:var(--line2);transition:background .14s;
+}
+.conv-item.active .conv-dot{background:var(--accent)}
+.conv-item[data-tag="human"] .conv-dot{background:transparent;border:1px solid var(--ink3)}
+
+/* hover 展开的标题面板 */
+.conv-meta{
+  position:absolute;left:calc(100% + 9px);top:-1px;width:238px;
+  background:var(--surface);border:1px solid var(--line2);border-radius:7px;
+  padding:9px 11px 10px;box-shadow:0 20px 34px -24px rgba(45,35,10,.55);
+  opacity:0;visibility:hidden;transform:translateX(-4px);pointer-events:none;
+  transition:opacity .13s ease,transform .13s ease,visibility .13s;
+}
+.conv-item:hover .conv-meta{opacity:1;visibility:visible;transform:none}
+.conv-title{display:block;font-size:13px;line-height:1.45;color:var(--ink);font-weight:500}
+.conv-time{display:block;margin-top:4px;font-family:var(--mono);font-size:12px;color:var(--ink3)}
+.conv-tag{
+  display:inline-block;margin-top:7px;padding:1px 6px;border-radius:3px;
+  font-size:12px;line-height:1.5;letter-spacing:.02em;
+  border:1px solid var(--line2);color:var(--ink2);background:var(--paper);
+}
+.conv-tag.warn{border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
+
+.rail-foot{margin-top:auto;padding-top:10px;border-top:1px solid var(--line);text-align:center}
+.rail-foot span{font-family:var(--mono);font-size:12px;color:var(--ink3);letter-spacing:.08em}
+
+/* ───────── thread ───────── */
+.thread{position:relative;display:grid;grid-template-rows:44px minmax(0,1fr) auto;min-height:0;min-width:0}
+.scroll-hint{
+  position:absolute;right:26px;top:56px;z-index:3;display:inline-flex;align-items:center;gap:6px;
+  padding:3px 9px;border:1px solid var(--line2);border-radius:20px;background:rgba(255,253,247,.92);
+  font-family:var(--mono);font-size:12px;color:var(--ink3);letter-spacing:.02em;
+  cursor:pointer;opacity:0;transform:translateY(-3px);pointer-events:none;
+}
+.scroll-hint.on{opacity:1;transform:none;pointer-events:auto}
+.scroll-hint:hover{color:var(--ink);border-color:var(--ink)}
+.stream-fade{
+  position:absolute;left:0;right:9px;top:44px;height:12px;z-index:2;pointer-events:none;
+  background:linear-gradient(var(--paper) 12%,rgba(247,244,236,0));
+}
+.thread-head{
+  display:flex;align-items:center;gap:10px;padding:0 24px 0 46px;
+  border-bottom:1px solid var(--line);
+}
+.thread-title{font-size:14px;font-weight:600;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thread-tag{
+  flex:none;font-size:12px;line-height:1.6;padding:0 6px;border-radius:3px;
+  border:1px solid var(--accent-line);color:var(--accent);background:var(--accent-soft);
+}
+.thread-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.thread-count{font-family:var(--mono);font-size:12px;color:var(--ink3);letter-spacing:.04em}
+.icon-btn{
+  width:26px;height:26px;display:grid;place-items:center;border:1px solid var(--line2);
+  background:var(--surface);border-radius:4px;cursor:pointer;font-size:12px;
+  font-family:var(--mono);color:var(--ink2);line-height:1;
+  transition:background .14s,border-color .14s,color .14s,transform .08s;
+}
+.icon-btn:hover{border-color:var(--ink);color:var(--ink);background:var(--fill)}
+.icon-btn:active{transform:translateY(1px)}
+
+.stream{overflow-y:auto;overflow-x:hidden;padding:18px 30px 46px 62px;scrollbar-gutter:stable;position:relative}
+.stream::-webkit-scrollbar{width:9px}
+.stream::-webkit-scrollbar-thumb{background:#ddd4c1;border-radius:9px;border:2px solid var(--paper)}
+.stream::-webkit-scrollbar-thumb:hover{background:#cbbfa6}
+.stream::-webkit-scrollbar-track{background:transparent}
+
+.msg{position:relative;margin-bottom:19px}
+.msg:last-child{margin-bottom:2px}
+/* 版心左缘：主体标记，作为台账的「谁」列 */
+.speaker{
+  position:absolute;left:-58px;top:4px;width:46px;height:15px;
+  display:flex;align-items:center;justify-content:flex-end;gap:5px;white-space:nowrap;
+}
+.msg.user .speaker{top:11px}
+.who{font-size:12px;line-height:1.2;letter-spacing:.02em;color:var(--ink3);white-space:nowrap}
+.msg.assistant .who{color:var(--ink2);font-weight:600}
+.msg.assistant .who::before{
+  content:"";display:inline-block;width:4px;height:4px;border-radius:1px;
+  background:var(--accent);margin-right:4px;vertical-align:2px;
+}
+.msg.user .who::before{
+  content:"";display:inline-block;width:4px;height:4px;border-radius:50%;
+  border:1px solid #a49b88;margin-right:4px;vertical-align:2px;
+}
+
+.bubble{
+  font-size:15px;line-height:1.68;color:var(--ink);
+  max-width:706px;letter-spacing:.004em;
+}
+.msg.user .bubble{
+  display:inline-block;max-width:560px;background:var(--fill);
+  border:1px solid var(--fill-line);border-radius:7px;padding:8px 14px 9px;
+}
+.bubble strong{font-weight:600;color:#121109}
+.num{font-family:var(--mono);font-size:.94em;letter-spacing:-.01em;font-weight:600}
+
+/* tool badges */
+.tool-badges{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.badge{
+  display:inline-flex;align-items:center;gap:7px;height:23px;padding:0 9px;
+  border:1px solid var(--line2);border-radius:4px;background:var(--surface);
+  font-family:var(--mono);font-size:12px;color:var(--ink2);letter-spacing:.01em;
+}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:var(--ink3);flex:none}
+.badge.ok .dot{background:var(--ok)}
+.badge.ok{border-color:#cfd9c9}
+.badge.running{border-style:dashed;border-color:#e3cfa4;background:var(--run-soft);color:var(--run)}
+.badge.running .dot{background:#c98a12;animation:blink 2.2s ease-in-out infinite}
+.badge.fail{border-color:#e6c3b8;background:#fcf1ee;color:#8d3419}
+.badge.fail .dot{background:#b4432a}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* flow line */
+.flow-line{
+  display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:7px;
+  font-family:var(--mono);font-size:12px;color:var(--ink3);letter-spacing:.01em;
+  line-height:1.55;
+}
+.flow-node{white-space:nowrap}
+.flow-intent{color:var(--ink2)}
+.flow-arrow{color:#b6ad99}
+.flow-node.hit{color:var(--ink2)}
+.conf{padding:0 4px;border-radius:3px;background:#f1ece0;color:var(--ink);font-weight:600}
+.conf.low{background:var(--accent-soft);color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent-line)}
+
+/* source chips */
+.source-list{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.source-list::before{
+  content:"依据";font-family:var(--sans);font-size:12px;color:var(--ink3);
+  letter-spacing:.1em;margin-right:1px;
+}
+.source-chip{
+  display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 10px;
+  border:1px solid var(--line2);border-radius:4px;background:var(--surface);
+  font-size:12px;color:var(--ink2);cursor:pointer;letter-spacing:.01em;
+  transition:border-color .14s,color .14s,background .14s,transform .08s;
+}
+.source-chip:hover{border-color:var(--accent);color:var(--accent);background:#fdf7f2}
+.source-chip:active{transform:translateY(1px)}
+.chip-n{font-family:var(--mono);font-size:11.5px;color:var(--ink3);letter-spacing:0}
+.source-chip:hover .chip-n{color:var(--accent)}
+.chip-mark{width:6px;height:6px;border:1px solid var(--ink3);border-radius:1px;flex:none}
+.source-chip:hover .chip-mark{border-color:var(--accent)}
+
+/* cite */
+.cite{
+  font-family:var(--mono);font-size:12px;line-height:1.1;vertical-align:3px;
+  padding:1px 4px;margin:0 2px;border:1px solid var(--accent-line);
+  border-radius:3px;background:var(--accent-soft);color:var(--accent);
+  cursor:pointer;letter-spacing:0;
+  transition:background .13s,color .13s,border-color .13s;
+}
+.cite:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.cite:active{transform:translateY(1px)}
+
+/* feedback */
+.feedback{margin-top:8px}
+.feedback-inner{display:flex;align-items:center;gap:6px}
+.fb-q{font-size:12px;color:var(--ink3);letter-spacing:.02em;margin-right:2px}
+.fb-btn{
+  height:24px;padding:0 10px;border:1px solid var(--line2);background:transparent;
+  border-radius:4px;font-size:12px;color:var(--ink2);cursor:pointer;letter-spacing:.04em;
+  transition:background .13s,border-color .13s,color .13s,transform .08s;
+}
+.fb-btn:hover{border-color:var(--ink);color:var(--ink);background:var(--surface)}
+.fb-btn:active{transform:translateY(1px)}
+.fb-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.fb-btn.locked{opacity:.4;cursor:not-allowed;border-style:dashed}
+.fb-btn.locked:hover{background:transparent;color:var(--ink2);border-color:var(--line2)}
+
+/* actions */
+.actions{display:flex;gap:8px;margin-top:10px}
+.action-btn{
+  height:29px;padding:0 14px;border:1px solid var(--ink);background:transparent;
+  border-radius:4px;font-size:12.5px;letter-spacing:.03em;color:var(--ink);cursor:pointer;
+  transition:background .14s,color .14s,border-color .14s,transform .08s;
+}
+.action-btn:hover{background:var(--ink);color:var(--surface)}
+.action-btn:active{transform:translateY(1px)}
+.action-btn.primary{background:var(--ink);color:var(--surface)}
+.action-btn.primary:hover{background:var(--accent);border-color:var(--accent)}
+.action-btn.done{border-color:var(--line2);color:var(--ink3);background:transparent;cursor:default}
+.action-btn.done:hover{background:transparent;color:var(--ink3);border-color:var(--line2)}
+
+/* confirm card */
+.confirm-card{
+  position:relative;margin-top:9px;max-width:662px;padding:12px 15px 11px;
+  border:1px solid var(--line2);border-radius:7px;background:var(--surface);
+  box-shadow:0 1px 0 rgba(40,30,10,.03);
+  transition:border-color .2s,background .2s,opacity .2s;
+}
+.confirm-title{font-size:14px;font-weight:600;letter-spacing:.01em;margin:4px 0 4px}
+.confirm-desc{font-size:14px;line-height:1.6;color:var(--ink2);margin:0 0 6px}
+.confirm-note{font-family:var(--mono);font-size:12px;color:var(--ink3);margin:0;letter-spacing:.01em;line-height:1.6}
+.confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:9px}
+.confirm-btn{
+  height:29px;padding:0 14px;border:1px solid var(--line2);background:var(--surface);
+  border-radius:4px;font-size:12.5px;letter-spacing:.03em;color:var(--ink2);cursor:pointer;
+  transition:background .14s,color .14s,border-color .14s,transform .08s;
+}
+.confirm-btn:hover{border-color:var(--ink);color:var(--ink);background:var(--fill)}
+.confirm-btn:active{transform:translateY(1px)}
+.confirm-btn.primary{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.confirm-btn.primary:hover{background:var(--accent);border-color:var(--accent)}
+.confirm-card[data-state="approve"]{border-color:#b9cbb4;background:var(--ok-soft);opacity:1}
+.confirm-card[data-state="reject"]{border-style:dashed;background:transparent;opacity:.62}
+.confirm-card::after{
+  position:absolute;right:15px;top:11px;font-family:var(--mono);font-size:12px;
+  letter-spacing:.02em;opacity:0;transition:opacity .2s;
+}
+.confirm-card[data-state="approve"]::after{content:"已确认";color:var(--ok);opacity:1}
+.confirm-card[data-state="reject"]::after{content:"已取消";color:var(--ink3);opacity:1}
+.confirm-card[data-state="approve"] .confirm-title,
+.confirm-card[data-state="reject"] .confirm-title{margin-right:56px}
+
+/* abstained */
+.bubble.abstained{
+  border:1px dashed #cfc2a6;border-radius:7px;padding:10px 14px;max-width:700px;
+  color:#4a4550;
+  background:repeating-linear-gradient(135deg,rgba(150,130,90,.05) 0 5px,transparent 5px 11px);
+}
+
+/* ───────── composer ───────── */
+.composer{padding:11px 34px 12px 44px;border-top:1px solid var(--line);background:var(--paper)}
+.composer-bar{
+  display:flex;align-items:center;gap:12px;height:56px;padding:0 9px 0 16px;
+  background:var(--surface);border:1px solid var(--line2);border-radius:14px;
+  box-shadow:0 1px 0 rgba(40,30,10,.03),0 16px 26px -24px rgba(50,38,12,.7);
+  transition:border-color .16s,box-shadow .16s;
+}
+.composer-bar:focus-within{border-color:#a89c84;box-shadow:0 0 0 3px rgba(178,58,0,.09),0 16px 26px -24px rgba(50,38,12,.7)}
+.composer-mark{width:9px;height:9px;background:var(--accent);border-radius:1px;flex:none}
+.composer-input{
+  flex:1;border:0;outline:0;background:transparent;resize:none;
+  font-family:var(--sans);font-size:15px;line-height:1.6;color:var(--ink);
+  height:24px;padding:0;letter-spacing:.004em;
+}
+.composer-input::placeholder{color:#78715f}
+.send-btn{
+  width:42px;height:42px;flex:none;border:0;border-radius:10px;background:var(--ink);
+  color:var(--surface);cursor:pointer;display:grid;place-items:center;
+  font-family:var(--mono);font-size:16px;line-height:1;
+  transition:background .14s,transform .08s,box-shadow .14s;
+}
+.send-btn:hover{background:var(--accent);box-shadow:0 6px 14px -8px rgba(178,58,0,.9)}
+.send-btn:active{transform:scale(.95)}
+.composer-hint{
+  display:flex;align-items:center;gap:10px;margin-top:6px;padding:0 4px;
+  font-family:var(--mono);font-size:12px;color:var(--ink3);letter-spacing:.01em;
+}
+.composer-hint .sep{width:1px;height:10px;background:var(--line2)}
+.composer-hint .right{margin-left:auto}
+
+/* ───────── source panel ───────── */
+#source-panel{
+  border-left:1px solid var(--line);background:var(--surface);
+  display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;
+}
+.source-head{
+  height:44px;flex:none;display:flex;align-items:center;justify-content:space-between;
+  padding:0 12px 0 15px;border-bottom:1px solid var(--line);
+}
+.sh-left{display:flex;align-items:center;gap:8px;min-width:0}
+.sh-idx{font-family:var(--mono);font-size:12px;color:var(--accent);padding:0 4px;border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:3px;line-height:1.7}
+.source-head h2{font-size:13px;font-weight:600;letter-spacing:.08em;margin:0;white-space:nowrap}
+#source-body{overflow-y:auto;padding:16px 15px 22px;min-height:0}
+#source-body::-webkit-scrollbar{width:8px}
+#source-body::-webkit-scrollbar-thumb{background:#e0d7c2;border-radius:8px;border:2px solid var(--surface)}
+
+.source-where{
+  font-family:var(--mono);font-size:12px;color:var(--ink3);letter-spacing:.01em;
+  line-height:1.65;padding-bottom:11px;border-bottom:1px solid var(--line);
+}
+.source-q{
+  font-size:14px;font-weight:600;color:var(--ink);line-height:1.6;
+  margin:12px 0 9px;letter-spacing:.01em;
+}
+.source-a{
+  font-size:14px;line-height:1.9;color:var(--ink2);letter-spacing:.004em;
+  padding:12px 13px;border:1px solid var(--line);border-radius:6px;
+  background:#fdfbf3;
+}
+.source-meta{
+  font-family:var(--mono);font-size:12px;color:var(--ink3);letter-spacing:.01em;
+  line-height:1.8;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);
+}
+.panel-note{
+  margin-top:18px;font-family:var(--mono);font-size:12px;color:var(--ink3);
+  line-height:1.8;letter-spacing:.02em;
+}
+.panel-mini{display:none}
+
+/* collapsed panel */
+.app.panel-off .source-head{padding:0;justify-content:center}
+.app.panel-off .sh-left{display:none}
+.app.panel-off #source-body{display:none}
+.app.panel-off #panelToggle2{display:none}
+.app.panel-off .panel-mini{
+  display:flex;flex:1;align-items:center;justify-content:center;
+}
+.app.panel-off .panel-mini span{
+  writing-mode:vertical-rl;font-family:var(--mono);font-size:12px;color:var(--ink3);
+  letter-spacing:.28em;
+}
+.app.panel-off .icon-btn{transform:rotate(180deg)}
+
+/* toast */
+.toast{
+  position:fixed;left:96px;bottom:26px;z-index:60;
+  display:flex;align-items:center;gap:9px;padding:9px 13px;
+  background:#232019;color:#f7f2e6;border-radius:5px;font-size:12.5px;letter-spacing:.02em;
+  opacity:0;transform:translateY(6px);pointer-events:none;
+  transition:opacity .18s,transform .18s;
+  box-shadow:0 18px 30px -22px rgba(0,0,0,.8);
+}
+.toast.on{opacity:1;transform:none}
+.toast::before{content:"";width:5px;height:5px;background:#ffb07a;border-radius:1px;flex:none}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ══════ 顶栏 ══════ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="brand-name">小智</span>
+      <span class="brand-sub">电商智能客服 · 会查单 · 会引用 · 会拒答</span>
+    </div>
+    <div class="status">
+      <span class="pulse" aria-hidden="true"></span>
+      <span class="mono">本轮检索 5 条 · 命中 2 条 · 置信度 0.72</span>
+    </div>
+    <div class="top-right">
+      <button class="btn-ghost" type="button" data-toast="演示版：新会话暂未接入">新会话</button>
+      <a class="top-link" href="#" data-toast="演示版：入口暂未接入">飞轮审核</a>
+      <a class="top-link" href="#" data-toast="演示版：入口暂未接入">主题分布</a>
+    </div>
+  </header>
+
+  <div class="body">
+
+    <!-- ══════ 左：会话索引 ══════ -->
+    <nav class="rail">
+      <div class="rail-head"><b>04</b>会话</div>
+
+      <button class="conv-item active" type="button" data-title="订单 1001 怎么还没发货">
+        <span class="conv-num">01</span>
+        <span class="conv-dot" aria-hidden="true"></span>
+        <span class="conv-meta">
+          <span class="conv-title">订单 1001 怎么还没发货</span>
+          <span class="conv-time">今天 14:22</span>
+          <span class="conv-tag warn">进行中</span>
+        </span>
+      </button>
+
+      <button class="conv-item" type="button" data-title="退款到账要多久">
+        <span class="conv-num">02</span>
+        <span class="conv-dot" aria-hidden="true"></span>
+        <span class="conv-meta">
+          <span class="conv-title">退款到账要多久</span>
+          <span class="conv-time">今天 11:40</span>
+        </span>
+      </button>
+
+      <button class="conv-item" type="button" data-title="尺码不合适能换吗">
+        <span class="conv-num">03</span>
+        <span class="conv-dot" aria-hidden="true"></span>
+        <span class="conv-meta">
+          <span class="conv-title">尺码不合适能换吗</span>
+          <span class="conv-time">昨天 20:15</span>
+        </span>
+      </button>
+
+      <button class="conv-item" type="button" data-title="帮我改一下收货地址" data-tag="human">
+        <span class="conv-num">04</span>
+        <span class="conv-dot" aria-hidden="true"></span>
+        <span class="conv-meta">
+          <span class="conv-title">帮我改一下收货地址</span>
+          <span class="conv-time">昨天 09:03</span>
+          <span class="conv-tag">已转人工</span>
+        </span>
+      </button>
+
+      <div class="rail-foot"><span>01—04</span></div>
+    </nav>
+
+    <!-- ══════ 中：对话主区 ══════ -->
+    <main class="thread">
+      <div class="thread-head">
+        <span class="thread-title">订单 1001 怎么还没发货</span>
+        <span class="thread-tag">进行中</span>
+        <div class="thread-right">
+          <span class="thread-count">08 条</span>
+          <button class="icon-btn" id="panelToggle" type="button" aria-label="折叠依据栏" title="折叠依据栏">»</button>
+        </div>
+      </div>
+
+      <div class="stream" id="stream">
+
+
+        <!-- ① -->
+        <article class="msg user" data-n="01">
+          <div class="speaker"><span class="who">客户</span></div>
+          <div class="bubble">订单 1001 怎么还没发货</div>
+        </article>
+
+        <!-- ② -->
+        <article class="msg assistant" data-n="02">
+          <div class="speaker"><span class="who">小智</span></div>
+          <div class="tool-badges">
+            <span class="badge ok"><i class="dot"></i>query_order · 已完成</span>
+          </div>
+          <div class="flow-line">
+            <span class="flow-node flow-intent">意图：查订单</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">路由：order_tool</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">工具：query_order</span>
+          </div>
+          <div class="bubble">订单 <strong class="num">1001</strong> 是「无线蓝牙降噪耳机」× 1，实付 <strong class="num">¥399.00</strong>，下单时间 <strong class="num">2026-08-07</strong>，当前状态 <strong>待发货</strong>。仓库一般在付款后 48 小时内出库；今天已经第 3 天，建议直接催发。</div>
+          <div class="source-list">
+            <button class="source-chip" type="button" data-open="1"><i class="chip-mark"></i>售后处理手册 &gt; 发货时效</button>
+          </div>
+          <div class="feedback">
+            <div class="feedback-inner">
+              <span class="fb-q">这条答案有帮助吗</span>
+              <button class="fb-btn" type="button">有用</button>
+              <button class="fb-btn" type="button">没用</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- ③ -->
+        <article class="msg user" data-n="03">
+          <div class="speaker"><span class="who">客户</span></div>
+          <div class="bubble">能帮我催一下吗</div>
+        </article>
+
+        <!-- ④ -->
+        <article class="msg assistant" data-n="04">
+          <div class="speaker"><span class="who">小智</span></div>
+          <div class="tool-badges">
+            <span class="badge running"><i class="dot"></i>create_ticket · 待确认</span>
+          </div>
+          <div class="bubble">提交前需要你确认一下——我不会替你直接建单。</div>
+          <div class="confirm-card">
+            <div class="confirm-title">提交工单 · 物流催发</div>
+            <div class="confirm-desc">订单 1001 已超 48 小时未出库，申请仓库优先出库并回电告知预计发出时间。</div>
+            <div class="confirm-note">确认后才会提交给人工客服，取消不建单。</div>
+            <div class="confirm-actions">
+              <button class="confirm-btn" type="button" data-act="reject">取消</button>
+              <button class="confirm-btn primary" type="button" data-act="approve">确认提交</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- ⑤ -->
+        <article class="msg user" data-n="05">
+          <div class="speaker"><span class="who">客户</span></div>
+          <div class="bubble">退款到账要多久</div>
+        </article>
+
+        <!-- ⑥ -->
+        <article class="msg assistant" data-n="06">
+          <div class="speaker"><span class="who">小智</span></div>
+          <div class="flow-line">
+            <span class="flow-node flow-intent">意图：售后咨询</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">路由：kb_rag</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node hit">检索 5 条 · 命中 2 条 · 置信度 <span class="conf">0.72</span></span>
+          </div>
+          <div class="bubble">退货退款在仓库<strong>验收通过后 3 个工作日内</strong>发起退款<button class="cite" type="button" data-open="1">[1]</button>；到账时间看支付渠道，原路退回微信/支付宝一般 <strong class="num">1–3</strong> 个工作日，银行卡 <strong class="num">3–7</strong> 个工作日<button class="cite" type="button" data-open="2">[2]</button>。客服侧只说明发起时效，不承诺具体到账日期。</div>
+          <div class="source-list">
+            <button class="source-chip" type="button" data-open="1"><span class="chip-n">[1]</span>售后处理手册 &gt; 工单类型与时效</button>
+            <button class="source-chip" type="button" data-open="2"><span class="chip-n">[2]</span>售后处理手册 &gt; 退货流程</button>
+          </div>
+          <div class="feedback">
+            <div class="feedback-inner">
+              <span class="fb-q">这条答案有帮助吗</span>
+              <button class="fb-btn" type="button">有用</button>
+              <button class="fb-btn" type="button">没用</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- ⑦ -->
+        <article class="msg user" data-n="07">
+          <div class="speaker"><span class="who">客户</span></div>
+          <div class="bubble">那双十一买的东西也能这样退吗</div>
+        </article>
+
+        <!-- ⑧ -->
+        <article class="msg assistant" data-n="08">
+          <div class="speaker"><span class="who">小智</span></div>
+          <div class="flow-line">
+            <span class="flow-node flow-intent">意图：售后咨询</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">路由：kb_rag</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node hit">检索 5 条 · 命中 0 条 · 置信度 <span class="conf low">0.31</span></span>
+          </div>
+          <div class="bubble abstained">这一点我查不到确切条款——大促期间的退换规则和日常不同，知识库里还没有这一条。已经记下来交给人工补充，你可以先转人工确认。</div>
+          <div class="actions">
+            <button class="action-btn" type="button" id="toHuman">转人工</button>
+          </div>
+        </article>
+
+      </div>
+      <div class="stream-fade" aria-hidden="true"></div>
+      <button class="scroll-hint" id="scrollHint" type="button">↑ 更早 3 条</button>
+
+      <!-- ══════ 输入区 ══════ -->
+      <div class="composer">
+        <div class="composer-bar">
+          <span class="composer-mark" aria-hidden="true"></span>
+          <input class="composer-input" id="input" type="text" placeholder="输入消息，Enter 发送" autocomplete="off">
+          <button class="send-btn" id="send" type="button" aria-label="发送">↑</button>
+        </div>
+        <div class="composer-hint">
+          <span>AI 回答标注依据 [n]</span>
+          <span class="sep"></span>
+          <span>置信度低于阈值时拒答</span>
+          <span class="right">Enter 发送 · Shift + Enter 换行</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- ══════ 右：依据 / 详情 ══════ -->
+    <aside id="source-panel">
+      <div class="source-head">
+        <div class="sh-left">
+          <span class="sh-idx">[1]</span>
+          <h2>来源原文</h2>
+        </div>
+        <button class="icon-btn" id="panelToggle2" type="button" aria-label="折叠依据栏" title="折叠依据栏">»</button>
+      </div>
+
+      <div id="source-body">
+        <div class="source-where">售后处理手册 &gt; 工单类型与时效</div>
+        <div class="source-q">问：退货退款多久能到账</div>
+        <div class="source-a">退货退款：2 小时内响应；到仓验收通过后 3 个工作日内退款；需要寄回商品；超 3 个工作日未完结自动升级。</div>
+        <div class="source-meta">命中相似度 0.72 · 知识块 #2 · vector_id 2</div>
+        <div class="panel-note">依据栏随引用角标切换，<br>内容取自知识库原文，不改写。</div>
+      </div>
+
+      <div class="panel-mini"><span>来源原文</span></div>
+    </aside>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var app = document.getElementById('app');
+  var stream = document.getElementById('stream');
+  var toastEl = document.getElementById('toast');
+  var toastTimer;
+
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('on'); }, 1900);
+  }
+
+  /* 依据栏折叠 */
+  function togglePanel(){
+    var off = app.classList.toggle('panel-off');
+    document.getElementById('panelToggle').textContent = off ? '«' : '»';
+    document.getElementById('panelToggle2').textContent = off ? '«' : '»';
+    document.getElementById('panelToggle').setAttribute('aria-label', off ? '展开依据栏' : '折叠依据栏');
+  }
+  document.getElementById('panelToggle').addEventListener('click', togglePanel);
+  document.getElementById('panelToggle2').addEventListener('click', togglePanel);
+
+  /* 顶部入口 / 新会话 */
+  document.querySelectorAll('[data-toast]').forEach(function(el){
+    el.addEventListener('click', function(e){
+      if (el.tagName === 'A') e.preventDefault();
+      toast(el.getAttribute('data-toast'));
+    });
+  });
+
+  /* 会话索引：切换需反馈，但内容只有一条完整记录 */
+  document.querySelectorAll('.conv-item').forEach(function(item){
+    item.addEventListener('click', function(){
+      if (item.classList.contains('active')) return;
+      toast('演示版：仅「' + document.querySelector('.conv-item.active .conv-title').textContent + '」含完整记录');
+    });
+  });
+
+  /* 反馈按钮：互斥 + locked */
+  document.querySelectorAll('.feedback').forEach(function(group){
+    var btns = group.querySelectorAll('.fb-btn');
+    btns.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        if (btn.classList.contains('locked')) return;
+        btns.forEach(function(b){
+          b.classList.remove('active');
+          b.classList.add('locked');
+        });
+        btn.classList.remove('locked');
+        btn.classList.add('active');
+      });
+    });
+  });
+
+  /* 确认卡：approve / reject */
+  document.querySelectorAll('.confirm-card').forEach(function(card){
+    card.querySelectorAll('.confirm-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var act = btn.getAttribute('data-act');
+        card.setAttribute('data-state', act);
+        card.querySelectorAll('.confirm-btn').forEach(function(b){
+          b.disabled = true;
+          b.classList.remove('primary');
+          b.classList.add('done');
+          b.style.cursor = 'default';
+        });
+      });
+    });
+  });
+
+  /* 转人工 */
+  var human = document.getElementById('toHuman');
+  if (human) {
+    human.addEventListener('click', function(){
+      human.classList.add('done');
+      human.textContent = '已转人工';
+    });
+  }
+
+  /* 引用角标 / 来源 chip → 展开依据栏 */
+  document.querySelectorAll('[data-open]').forEach(function(el){
+    el.addEventListener('click', function(){
+      if (app.classList.contains('panel-off')) togglePanel();
+      var body = document.getElementById('source-body');
+      body.style.transition = 'none';
+      body.style.opacity = '.35';
+      requestAnimationFrame(function(){
+        body.style.transition = 'opacity .22s';
+        body.style.opacity = '1';
+      });
+    });
+  });
+
+  /* 发送：追加用户消息，不伪造助手回答 */
+  var input = document.getElementById('input');
+  var send = document.getElementById('send');
+  var seq = 8;
+
+  function doSend(){
+    var text = input.value.trim();
+    if (!text){
+      input.focus();
+      document.querySelector('.composer-bar').animate(
+        [{transform:'translateX(0)'},{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(0)'}],
+        {duration:170}
+      );
+      return;
+    }
+    seq += 1;
+    var art = document.createElement('article');
+    art.className = 'msg user';
+    art.setAttribute('data-n', (seq < 10 ? '0' + seq : seq));
+    var sp = document.createElement('div');
+    sp.className = 'speaker';
+    sp.innerHTML = '<span class="who">客户</span>';
+    var bb = document.createElement('div');
+    bb.className = 'bubble';
+    bb.textContent = text;
+    art.appendChild(sp); art.appendChild(bb);
+    stream.appendChild(art);
+    stream.scrollTop = stream.scrollHeight;
+    input.value = '';
+    input.focus();
+  }
+  send.addEventListener('click', doSend);
+  input.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); doSend(); }
+  });
+
+  /* 初始定位：让 ④（确认卡）完整落在首屏顶部，末条 ⑧ 也完整可见 */
+  var msgs = document.querySelectorAll('.msg');
+  var prev = msgs[2];
+  var hint = document.getElementById('scrollHint');
+  var sr = stream.getBoundingClientRect(), pr = prev.getBoundingClientRect();
+  stream.scrollTop = Math.max(0, stream.scrollTop + (pr.bottom - sr.top) + 5);
+
+  function syncHint(){ hint.classList.toggle('on', stream.scrollTop > 12); }
+  stream.addEventListener('scroll', syncHint);
+  syncHint();
+  hint.addEventListener('click', function(){ stream.scrollTo({top:0, behavior:'smooth'}); });
+})();
+</script>
+</body>
+</html>

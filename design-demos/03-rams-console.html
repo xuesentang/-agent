@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>小智 · 客服台账控制台</title>
+<style>
+:root{
+  --chassis:#E2DFD5;
+  --chassis-2:#D8D4C6;
+  --paper:#F7F5EE;
+  --slip:#FCFAF2;
+  --ink:#1F201B;
+  --ink-2:#54554A;
+  --ink-3:#6B6C5C;
+  --rule:#CAC5B4;
+  --rule-soft:#E0DBCC;
+  --dark:#232420;
+  --cream:#F2EFE3;
+  --accent:#C0491F;
+  --accent-ink:#A33C14;
+  --mono:ui-monospace,"SF Mono",Consolas,"Cascadia Mono",monospace;
+  --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  background:var(--chassis);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;color:inherit;border-radius:0}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.app{display:flex;height:100vh;min-height:0}
+
+/* ================= 左索引 ================= */
+.rail{
+  width:72px;flex:0 0 72px;
+  background:var(--chassis-2);
+  border-right:1px solid var(--rule);
+  display:flex;flex-direction:column;
+  position:relative;z-index:30;
+}
+.rail-head{
+  height:76px;flex:0 0 76px;
+  background:var(--dark);color:rgba(242,239,227,.62);
+  display:flex;align-items:center;justify-content:center;
+}
+.rail-head span{writing-mode:vertical-rl;font-size:12px;letter-spacing:.34em}
+.rail-list{display:flex;flex-direction:column}
+.conv-item{
+  position:relative;width:72px;height:92px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  padding:0;border:0;border-bottom:1px solid var(--rule);
+  background:transparent;cursor:pointer;
+  transition:background .12s ease;
+}
+.conv-item .conv-no{font-family:var(--mono);font-size:17px;line-height:1;color:var(--ink);letter-spacing:.02em}
+.conv-item .conv-meta{font-size:12px;line-height:1.3;color:var(--ink-2);text-align:center}
+.conv-item .conv-tag{font-size:12px;line-height:1.2;color:var(--ink-2);letter-spacing:.02em}
+.conv-item:not(.active):hover{background:#CFCABA}
+.conv-item:not(.active):active{transform:translateY(1px)}
+.conv-item.active{background:var(--dark)}
+.conv-item.active .conv-no{color:var(--cream)}
+.conv-item.active .conv-meta{color:rgba(242,239,227,.6)}
+.conv-item.active .conv-tag{color:#DE9268}
+.conv-item.active::after{
+  content:"";position:absolute;right:0;top:0;width:2px;height:100%;
+  background:rgba(242,239,227,.22);
+}
+.conv-title{
+  position:absolute;left:72px;top:8px;width:242px;
+  background:var(--dark);color:var(--cream);
+  border:1px solid #3B3C33;
+  padding:10px 13px;text-align:left;
+  font-size:14px;line-height:1.5;font-weight:400;
+  opacity:0;transform:translateX(-4px);
+  pointer-events:none;
+  transition:opacity .12s ease,transform .12s ease;
+  box-shadow:5px 5px 0 rgba(31,32,27,.10);
+  z-index:60;
+}
+.conv-item:hover .conv-title,.conv-item:focus-visible .conv-title{opacity:1;transform:none}
+.rail-foot{
+  margin-top:auto;padding:18px 0;align-self:center;
+  writing-mode:vertical-rl;font-size:12px;letter-spacing:.28em;color:var(--ink-2);
+}
+
+/* ================= 主控台 ================= */
+.console{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--paper)}
+
+.panel-bar{
+  flex:0 0 76px;height:76px;
+  background:var(--dark);color:var(--cream);
+  display:flex;align-items:center;gap:18px;
+  padding:0 18px 0 22px;
+  border-bottom:1px solid #101109;
+}
+.brand{display:flex;align-items:flex-start;gap:10px;flex:0 0 auto}
+.brand-dot{width:8px;height:8px;background:var(--accent);margin-top:8px;flex:0 0 8px}
+.brand-txt{display:flex;flex-direction:column}
+.brand-name{font-size:24px;font-weight:600;line-height:1;letter-spacing:.14em;color:#F6F3E7}
+.brand-sub{font-size:12px;line-height:1.4;margin-top:6px;color:rgba(242,239,227,.6);letter-spacing:.02em;white-space:nowrap}
+.v-rule{width:1px;height:38px;background:rgba(242,239,227,.18);flex:0 0 1px}
+
+.gauges{display:flex;align-items:center;gap:20px}
+.gauge{display:flex;flex-direction:column;gap:3px;min-width:52px}
+.g-k{font-size:12px;letter-spacing:.14em;color:rgba(242,239,227,.52)}
+.g-v{font-family:var(--mono);font-size:17px;line-height:1.1;letter-spacing:.03em;color:#F6F3E7}
+.gauge.conf{min-width:158px}
+.g-row{display:flex;align-items:center;gap:9px}
+.meter{
+  display:inline-block;width:62px;height:9px;padding:1px;
+  border:1px solid rgba(242,239,227,.42);
+}
+.meter i{display:block;height:100%;background:var(--accent);width:72%}
+
+.panel-actions{margin-left:auto;display:flex;align-items:center}
+.p-btn{
+  height:32px;padding:0 15px;
+  border:1px solid rgba(242,239,227,.30);
+  background:transparent;color:rgba(242,239,227,.92);
+  font-size:14px;letter-spacing:.06em;cursor:pointer;
+  transition:background .12s ease,border-color .12s ease,transform .06s ease;
+}
+.p-btn + .p-btn{margin-left:-1px}
+.p-btn:hover{background:rgba(242,239,227,.10);border-color:rgba(242,239,227,.72)}
+.p-btn:active{transform:translateY(1px);background:rgba(242,239,227,.18)}
+
+.lower{flex:1;min-height:0;display:flex}
+.maincol{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+
+/* ================= 记录区 ================= */
+.thread{
+  flex:1;min-height:0;position:relative;
+  overflow-y:auto;overflow-x:hidden;
+  background:var(--paper);
+}
+.thread::-webkit-scrollbar{width:9px}
+.thread::-webkit-scrollbar-track{background:#EDEADF;border-left:1px solid var(--rule-soft)}
+.thread::-webkit-scrollbar-thumb{background:#B6B19C;border:2px solid #EDEADF}
+
+.msg{
+  display:grid;grid-template-columns:92px minmax(0,1fr);
+  border-top:1px solid var(--rule-soft);
+}
+.msg:first-child{border-top:0}
+.turn-index{
+  border-right:1px solid var(--rule-soft);
+  padding:14px 8px 0 16px;
+  display:flex;flex-direction:column;gap:2px;
+}
+.turn-no{font-family:var(--mono);font-size:14px;line-height:1.2;color:var(--ink-2);letter-spacing:.06em}
+.turn-role{font-size:12px;line-height:1.3;color:var(--ink-3);letter-spacing:.04em}
+.turn-body{
+  padding:10px 36px 14px 22px;
+  display:flex;flex-direction:column;align-items:flex-start;gap:7px;
+  min-width:0;
+}
+
+/* 用户实块 */
+.msg.user .bubble{
+  align-self:flex-end;
+  max-width:560px;
+  background:var(--dark);color:#F5F2E6;
+  padding:10px 16px;
+  font-size:15px;line-height:1.6;
+}
+
+/* 助手记录行 */
+.msg.assistant .bubble{
+  border-left:2px solid var(--ink);
+  padding:1px 0 1px 16px;
+  max-width:850px;
+  font-size:16px;line-height:1.7;
+  color:#1D1E19;
+}
+.msg.assistant .bubble strong{font-weight:700}
+strong.num{font-family:var(--mono);font-weight:600;letter-spacing:.01em}
+.msg.assistant .bubble.abstained{
+  border:1px dashed #A19C84;
+  padding:12px 16px;
+  color:var(--ink-2);
+  background:transparent;
+  max-width:760px;
+}
+
+/* 决策流 */
+.flow-line{
+  display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+  font-size:12px;line-height:1.5;color:var(--ink-2);
+}
+.flow-node{
+  display:inline-flex;align-items:center;gap:5px;
+  border:1px solid var(--rule);background:#F0EDE1;
+  padding:2px 8px;white-space:nowrap;letter-spacing:.01em;
+}
+.flow-intent{border-color:#B0AB96;color:var(--ink);font-weight:600}
+.flow-node.hit{border-color:#B0AB96}
+.flow-node b{font-weight:600;color:var(--ink)}
+.flow-arrow{color:#9A9580;font-size:12px;line-height:1}
+.fmeter{
+  display:inline-block;width:34px;height:7px;padding:1px;margin-left:2px;
+  border:1px solid var(--ink-3);vertical-align:middle;
+}
+.fmeter u{display:block;height:100%;width:72%;background:var(--ink-2)}
+
+/* 工具徽章 */
+.tool-badges{display:flex;flex-wrap:wrap;gap:6px}
+.badge{
+  display:inline-flex;align-items:center;gap:7px;
+  border:1px solid var(--rule);background:#F0EDE1;
+  padding:3px 9px;
+  font-family:var(--mono);font-size:12px;line-height:1.4;
+  color:var(--ink-2);
+}
+.badge::before{content:"";width:7px;height:7px;flex:0 0 7px;background:var(--ink-2)}
+.badge.ok::before{background:var(--ink)}
+.badge.running{border-color:var(--accent);background:#F8EEE7;color:var(--accent-ink)}
+.badge.running::before{background:var(--accent)}
+.badge.fail::before{background:transparent;border:1px solid var(--accent)}
+
+/* 来源 chip */
+.source-list{display:flex;flex-wrap:wrap;gap:6px}
+.source-chip{
+  border:1px solid var(--rule);background:#F4F1E6;
+  padding:3px 8px;font-size:12px;line-height:1.4;color:var(--ink-2);
+  letter-spacing:.01em;
+}
+
+/* 反馈 */
+.feedback{display:flex}
+.feedback-inner{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3)}
+.fb-btn{
+  width:27px;height:22px;display:grid;place-items:center;
+  border:1px solid var(--rule);background:#F4F1E6;color:var(--ink-2);
+  cursor:pointer;
+  transition:background .1s ease,border-color .1s ease,transform .06s ease,color .1s ease;
+}
+.fb-btn:hover{border-color:var(--ink);background:#fff}
+.fb-btn:active{transform:translateY(1px)}
+.fb-btn.active{background:var(--dark);border-color:var(--dark);color:var(--cream)}
+.fb-btn.locked{opacity:.45;cursor:not-allowed}
+.tri{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent}
+.tri.up{border-bottom:6px solid currentColor}
+.tri.down{border-top:6px solid currentColor}
+
+/* 引用角标 */
+.cite{
+  font-family:var(--mono);font-size:12px;line-height:1;
+  color:var(--accent-ink);background:none;border:0;
+  border-bottom:1px solid currentColor;
+  padding:0 2px;margin:0 2px;cursor:pointer;
+  transition:background .1s ease,color .1s ease;
+}
+.cite:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.cite:active{transform:translateY(1px)}
+
+/* 确认卡 */
+.confirm-card{
+  position:relative;width:100%;max-width:648px;
+  border:1px solid var(--ink);background:var(--slip);
+  padding:12px 16px 12px;
+}
+.confirm-card::before{
+  content:"写操作";position:absolute;right:0;top:0;
+  background:var(--ink);color:var(--cream);
+  font-size:12px;line-height:1.6;padding:1px 8px;letter-spacing:.08em;
+}
+.confirm-title{font-size:15px;font-weight:700;line-height:1.5;padding-right:66px;letter-spacing:.01em}
+.confirm-desc{font-size:14px;line-height:1.7;margin-top:8px;color:var(--ink)}
+.confirm-note{
+  font-size:12px;line-height:1.6;color:var(--ink-3);
+  margin-top:8px;padding-top:7px;border-top:1px dashed var(--rule);
+}
+.confirm-actions{display:flex;gap:8px;margin-top:10px}
+.confirm-btn{
+  height:31px;padding:0 15px;
+  border:1px solid var(--ink);background:#F4F1E6;
+  font-size:14px;letter-spacing:.02em;cursor:pointer;
+  transition:background .12s ease,color .12s ease,transform .06s ease;
+}
+.confirm-btn:hover{background:var(--ink);color:var(--cream)}
+.confirm-btn:active{transform:translateY(1px)}
+.confirm-btn.primary{background:var(--dark);border-color:var(--dark);color:var(--cream)}
+.confirm-btn.primary:hover{background:#3A3B31}
+.confirm-card[data-state="approve"]{background:#F2F1E4}
+.confirm-card[data-state="approve"]::before{content:"已确认"}
+.confirm-card[data-state="reject"]{border-style:dashed;background:transparent}
+.confirm-card[data-state="reject"]::before{content:"未提交";background:var(--ink-3)}
+.confirm-card[data-state="approve"] .confirm-actions,
+.confirm-card[data-state="reject"] .confirm-actions{opacity:.42}
+.confirm-card[data-state] .confirm-btn{cursor:default}
+.confirm-card[data-state] .confirm-btn:hover{background:#F4F1E6;color:var(--ink)}
+.confirm-card[data-state] .confirm-btn.primary:hover{background:var(--dark);color:var(--cream)}
+
+/* 动作 */
+.actions{display:flex;gap:8px}
+.action-btn{
+  height:31px;padding:0 15px;
+  border:1px solid var(--ink);background:#F4F1E6;
+  font-size:14px;cursor:pointer;
+  transition:background .12s ease,color .12s ease,transform .06s ease;
+}
+.action-btn:hover{background:var(--ink);color:var(--cream)}
+.action-btn:active{transform:translateY(1px)}
+.action-btn.done{background:var(--ink);color:var(--cream);border-color:var(--ink)}
+
+/* ================= 输入槽 ================= */
+.composer{
+  flex:0 0 auto;padding:12px 22px 10px;
+  background:var(--chassis);border-top:1px solid var(--rule);
+}
+.slot{
+  display:flex;align-items:center;height:48px;
+  border:1px solid var(--ink);background:var(--slip);
+  transition:box-shadow .12s ease;
+}
+.slot:focus-within{box-shadow:inset 0 0 0 1px var(--ink)}
+.slot-k{
+  height:100%;display:flex;align-items:center;
+  padding:0 13px;border-right:1px solid var(--rule);
+  font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--ink-3);
+}
+.slot-input{
+  flex:1;min-width:0;height:100%;border:0;background:transparent;outline:none;
+  font-family:inherit;font-size:15px;color:var(--ink);padding:0 14px;
+}
+.slot-input::placeholder{color:var(--ink-3)}
+.slot-hint{font-family:var(--mono);font-size:12px;color:var(--ink-3);padding-right:14px;white-space:nowrap}
+.send-btn{
+  height:100%;width:92px;border:0;border-left:1px solid var(--ink);
+  background:var(--dark);color:var(--cream);
+  font-size:14px;letter-spacing:.18em;cursor:pointer;
+  transition:background .12s ease,transform .06s ease;
+}
+.send-btn:hover{background:#34362C}
+.send-btn:active{transform:translateY(1px);background:#0F100C}
+
+/* ================= 铭牌 ================= */
+.nameplate{
+  flex:0 0 34px;height:34px;
+  display:flex;align-items:center;gap:12px;
+  padding:0 22px;
+  background:var(--chassis-2);border-top:1px solid var(--rule);
+  font-size:12px;line-height:1;color:var(--ink-2);
+}
+.np{display:flex;align-items:baseline;gap:5px}
+.np-v{font-family:var(--mono);font-size:12px;color:var(--ink)}
+.np-dot{color:#A29D87}
+.np-right{margin-left:auto;font-size:12px;color:var(--accent-ink);letter-spacing:.02em}
+
+/* ================= 来源面板 ================= */
+#source-panel{
+  width:360px;flex:0 0 360px;
+  border-left:1px solid var(--rule);
+  background:#ECE9DE;
+  display:flex;flex-direction:column;min-height:0;
+}
+.source-head{
+  flex:0 0 44px;display:flex;align-items:center;gap:9px;
+  padding:0 18px;background:var(--dark);color:var(--cream);
+  font-size:13px;letter-spacing:.2em;
+}
+.source-head::before{content:"";width:7px;height:7px;background:var(--accent);flex:0 0 7px}
+.source-head .sh-r{
+  margin-left:auto;font-family:var(--mono);font-size:12px;
+  letter-spacing:.06em;color:rgba(242,239,227,.62);
+}
+#source-body{flex:1;min-height:0;padding:26px 18px 0;overflow:auto}
+.source-where{
+  font-size:12px;line-height:1.6;color:var(--accent-ink);
+  letter-spacing:.02em;padding-bottom:14px;border-bottom:1px solid var(--rule);
+}
+.source-q{
+  font-size:16px;font-weight:700;line-height:1.6;
+  margin-top:22px;color:var(--ink);letter-spacing:.01em;
+}
+.source-a{margin-top:22px;border-left:2px solid var(--ink);padding-left:14px}
+.clause{
+  display:grid;grid-template-columns:22px 1fr;gap:2px;
+  padding:20px 0;border-bottom:1px solid rgba(31,32,27,.08);
+  font-size:15.5px;line-height:1.8;color:var(--ink);
+}
+.clause:last-child{border-bottom:0}
+.clause b{font-family:var(--mono);font-size:12px;font-weight:400;color:var(--ink-3);line-height:1.9}
+
+.retrieval{
+  margin-top:auto;padding:14px 18px 16px;
+  border-top:1px solid var(--rule);background:#E6E2D4;
+}
+.rt-label{font-size:12px;letter-spacing:.16em;color:var(--ink-2);margin-bottom:9px}
+.rt-matrix{display:flex;gap:5px}
+.rt-matrix i{display:block;width:44px;height:26px;border:1px solid #B5B09B;background:#F4F1E7}
+.rt-matrix i.hit{background:#A9A48D;border-color:#8B8771}
+.rt-matrix i.hit.on{background:var(--ink);border-color:var(--ink);box-shadow:0 0 0 2px var(--accent) inset}
+.rt-legend{
+  display:flex;justify-content:space-between;
+  margin-top:9px;font-family:var(--mono);font-size:12px;color:var(--ink-2);
+}
+.source-meta{
+  flex:0 0 auto;padding:11px 18px;
+  border-top:1px solid var(--rule);background:#E6E2D4;
+  font-family:var(--mono);font-size:12px;line-height:1.6;color:var(--ink-2);
+}
+#source-panel.flash{animation:panelFlash .5s ease}
+@keyframes panelFlash{
+  0%{box-shadow:inset 3px 0 0 var(--accent)}
+  60%{box-shadow:inset 3px 0 0 var(--accent)}
+  100%{box-shadow:inset 3px 0 0 transparent}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 左：编号索引 -->
+  <aside class="rail">
+    <div class="rail-head"><span>会话</span></div>
+    <nav class="rail-list" aria-label="会话列表">
+      <button class="conv-item active" type="button" aria-current="true">
+        <span class="conv-no">01</span>
+        <span class="conv-meta">今天<br>14:22</span>
+        <span class="conv-tag">进行中</span>
+        <span class="conv-title">订单 1001 怎么还没发货</span>
+      </button>
+      <button class="conv-item" type="button">
+        <span class="conv-no">02</span>
+        <span class="conv-meta">今天<br>11:40</span>
+        <span class="conv-title">退款到账要多久</span>
+      </button>
+      <button class="conv-item" type="button">
+        <span class="conv-no">03</span>
+        <span class="conv-meta">昨天<br>20:15</span>
+        <span class="conv-title">尺码不合适能换吗</span>
+      </button>
+      <button class="conv-item" type="button">
+        <span class="conv-no">04</span>
+        <span class="conv-meta">昨天<br>09:03</span>
+        <span class="conv-tag">已转人工</span>
+        <span class="conv-title">帮我改一下收货地址</span>
+      </button>
+    </nav>
+    <div class="rail-foot">会话索引</div>
+  </aside>
+
+  <!-- 右：控制台 -->
+  <div class="console">
+
+    <!-- 仪表行 -->
+    <header class="panel-bar">
+      <div class="brand">
+        <span class="brand-dot" aria-hidden="true"></span>
+        <div class="brand-txt">
+          <span class="brand-name">小智</span>
+          <span class="brand-sub">电商智能客服 · 会查单 · 会引用 · 会拒答</span>
+        </div>
+      </div>
+      <span class="v-rule" aria-hidden="true"></span>
+      <div class="gauges">
+        <div class="gauge">
+          <span class="g-k">会话编号</span>
+          <span class="g-v">01</span>
+        </div>
+        <div class="gauge">
+          <span class="g-k">消息数</span>
+          <span class="g-v">08</span>
+        </div>
+        <div class="gauge conf">
+          <span class="g-k">本轮置信度</span>
+          <span class="g-row">
+            <span class="g-v">0.72</span>
+            <span class="meter" aria-hidden="true"><i></i></span>
+          </span>
+        </div>
+      </div>
+      <div class="panel-actions">
+        <button class="p-btn" type="button">新会话</button>
+        <button class="p-btn" type="button">飞轮审核</button>
+        <button class="p-btn" type="button">主题分布</button>
+      </div>
+    </header>
+
+    <div class="lower">
+      <div class="maincol">
+
+        <!-- 记录区 -->
+        <main class="thread" id="thread">
+
+          <article class="msg user" id="turn-01">
+            <div class="turn-index"><span class="turn-no">01</span><span class="turn-role">用户</span></div>
+            <div class="turn-body">
+              <div class="bubble">订单 1001 怎么还没发货</div>
+            </div>
+          </article>
+
+          <article class="msg assistant" id="turn-02">
+            <div class="turn-index"><span class="turn-no">02</span><span class="turn-role">小智</span></div>
+            <div class="turn-body">
+              <div class="flow-line">
+                <span class="flow-node flow-intent">意图：查订单</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node">路由：order_tool</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node">工具：query_order</span>
+              </div>
+              <div class="tool-badges">
+                <span class="badge ok">query_order · 已完成</span>
+              </div>
+              <div class="bubble">订单 <strong class="num">1001</strong> 是「无线蓝牙降噪耳机」× 1，实付 <strong class="num">¥399.00</strong>，下单时间 <span class="num">2026-08-07</span>，当前状态 <strong>待发货</strong>。仓库一般在付款后 48 小时内出库；今天已经第 3 天，建议直接催发。</div>
+              <div class="source-list">
+                <span class="source-chip">售后处理手册 &gt; 发货时效</span>
+              </div>
+              <div class="feedback">
+                <div class="feedback-inner">
+                  <span>这条答案有帮助吗</span>
+                  <button class="fb-btn" type="button" aria-label="有帮助"><i class="tri up"></i></button>
+                  <button class="fb-btn" type="button" aria-label="没有帮助"><i class="tri down"></i></button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="msg user" id="turn-03">
+            <div class="turn-index"><span class="turn-no">03</span><span class="turn-role">用户</span></div>
+            <div class="turn-body">
+              <div class="bubble">能帮我催一下吗</div>
+            </div>
+          </article>
+
+          <article class="msg assistant" id="turn-04">
+            <div class="turn-index"><span class="turn-no">04</span><span class="turn-role">小智</span></div>
+            <div class="turn-body">
+              <div class="tool-badges">
+                <span class="badge running">create_ticket · 待确认</span>
+              </div>
+              <div class="confirm-card" data-state="">
+                <div class="confirm-title">提交工单 · 物流催发</div>
+                <div class="confirm-desc">订单 1001 已超 48 小时未出库，申请仓库优先出库并回电告知预计发出时间。</div>
+                <div class="confirm-note">确认后才会提交给人工客服，取消不建单。</div>
+                <div class="confirm-actions">
+                  <button class="confirm-btn primary" type="button">确认提交</button>
+                  <button class="confirm-btn" type="button">取消</button>
+                </div>
+              </div>
+              <div class="bubble">提交前需要你确认一下——我不会替你直接建单。</div>
+            </div>
+          </article>
+
+          <article class="msg user" id="turn-05">
+            <div class="turn-index"><span class="turn-no">05</span><span class="turn-role">用户</span></div>
+            <div class="turn-body">
+              <div class="bubble">退款到账要多久</div>
+            </div>
+          </article>
+
+          <article class="msg assistant" id="turn-06">
+            <div class="turn-index"><span class="turn-no">06</span><span class="turn-role">小智</span></div>
+            <div class="turn-body">
+              <div class="flow-line">
+                <span class="flow-node flow-intent">意图：售后咨询</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node">路由：kb_rag</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node hit">检索 5 条 · 命中 2 条</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node">置信度 <b>0.72</b><span class="fmeter" aria-hidden="true"><u></u></span></span>
+              </div>
+              <div class="bubble">退货退款在仓库<strong>验收通过后 3 个工作日内</strong>发起退款<button class="cite" type="button">[1]</button>；到账时间看支付渠道，原路退回微信/支付宝一般 1–3 个工作日，银行卡 3–7 个工作日<button class="cite" type="button">[2]</button>。客服侧只说明发起时效，不承诺具体到账日期。</div>
+              <div class="source-list">
+                <span class="source-chip">售后处理手册 &gt; 工单类型与时效</span>
+                <span class="source-chip">售后处理手册 &gt; 退货流程</span>
+              </div>
+              <div class="feedback">
+                <div class="feedback-inner">
+                  <span>这条答案有帮助吗</span>
+                  <button class="fb-btn" type="button" aria-label="有帮助"><i class="tri up"></i></button>
+                  <button class="fb-btn" type="button" aria-label="没有帮助"><i class="tri down"></i></button>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <article class="msg user" id="turn-07">
+            <div class="turn-index"><span class="turn-no">07</span><span class="turn-role">用户</span></div>
+            <div class="turn-body">
+              <div class="bubble">那双十一买的东西也能这样退吗</div>
+            </div>
+          </article>
+
+          <article class="msg assistant" id="turn-08">
+            <div class="turn-index"><span class="turn-no">08</span><span class="turn-role">小智</span></div>
+            <div class="turn-body">
+              <div class="flow-line">
+                <span class="flow-node flow-intent">意图：售后咨询</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node">路由：kb_rag</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node hit">检索 5 条 · 命中 0 条</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-node">置信度 <b>0.31</b><span class="fmeter" aria-hidden="true"><u style="width:31%"></u></span></span>
+              </div>
+              <div class="bubble abstained">这一点我查不到确切条款——大促期间的退换规则和日常不同，知识库里还没有这一条。已经记下来交给人工补充，你可以先转人工确认。</div>
+              <div class="actions">
+                <button class="action-btn" type="button">转人工</button>
+              </div>
+            </div>
+          </article>
+
+        </main>
+
+      </div>
+
+      <!-- 来源原文 -->
+      <aside id="source-panel">
+        <div class="source-head">
+          来源原文
+          <span class="sh-r mono">CHUNK 02</span>
+        </div>
+        <div id="source-body">
+          <div class="source-where">售后处理手册 &gt; 工单类型与时效</div>
+          <div class="source-q">问：退货退款多久能到账</div>
+          <div class="source-a">
+            <div class="clause"><b>01</b><span>退货退款：2 小时内响应；</span></div>
+            <div class="clause"><b>02</b><span>到仓验收通过后 3 个工作日内退款；</span></div>
+            <div class="clause"><b>03</b><span>需要寄回商品；</span></div>
+            <div class="clause"><b>04</b><span>超 3 个工作日未完结自动升级。</span></div>
+          </div>
+        </div>
+        <div class="retrieval">
+          <div class="rt-label">本轮检索</div>
+          <div class="rt-matrix" aria-hidden="true">
+            <i class="hit"></i><i class="hit on"></i><i></i><i></i><i></i>
+          </div>
+          <div class="rt-legend">
+            <span>检索 5 条</span><span>命中 2 条</span><span>置信度 0.72</span>
+          </div>
+        </div>
+        <div class="source-meta">命中相似度 0.72 · 知识块 #2 · vector_id 2</div>
+      </aside>
+    </div>
+
+    <!-- 输入槽 -->
+    <div class="composer">
+      <div class="slot">
+        <span class="slot-k">输入</span>
+        <input class="slot-input" type="text" placeholder="描述你的问题，或输入订单号" aria-label="输入问题">
+        <span class="slot-hint">ENTER 发送</span>
+        <button class="send-btn" type="button">发送</button>
+      </div>
+    </div>
+
+    <!-- 铭牌 -->
+    <footer class="nameplate">
+      <span class="np">知识库 <span class="np-v">358</span> 块</span>
+      <span class="np-dot">·</span>
+      <span class="np">本轮检索 <span class="np-v">5</span> 条</span>
+      <span class="np-dot">·</span>
+      <span class="np">置信度 <span class="np-v">0.72</span></span>
+      <span class="np-right" id="np-hint"></span>
+    </footer>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  var thread = document.getElementById('thread');
+
+  /* 初始定位：第 4 条（写操作确认）到第 8 条（拒答）同处首屏 */
+  function align(){
+    var t4 = document.getElementById('turn-04');
+    thread.scrollTop = Math.max(0, t4.offsetTop - 1);
+  }
+  window.addEventListener('load', align);
+
+  /* 引用角标 -> 高亮来源面板 */
+  var panel = document.getElementById('source-panel');
+  document.querySelectorAll('.cite').forEach(function(el){
+    el.addEventListener('click', function(){
+      panel.classList.remove('flash');
+      void panel.offsetWidth;
+      panel.classList.add('flash');
+    });
+  });
+
+  /* 确认卡：确认 / 取消 */
+  document.querySelectorAll('.confirm-card').forEach(function(card){
+    var btns = card.querySelectorAll('.confirm-btn');
+    btns.forEach(function(btn, i){
+      btn.addEventListener('click', function(){
+        if (card.dataset.state) return;
+        card.dataset.state = (i === 0) ? 'approve' : 'reject';
+        btns.forEach(function(b){ b.disabled = true; });
+      });
+    });
+  });
+
+  /* 反馈 */
+  document.querySelectorAll('.feedback-inner').forEach(function(row){
+    var btns = row.querySelectorAll('.fb-btn');
+    btns.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        btns.forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+      });
+    });
+  });
+
+  /* 顶栏入口 / 会话项：给出可见回应 */
+  var hint = document.getElementById('np-hint');
+  var timer = null;
+  function say(text){
+    hint.textContent = text;
+    clearTimeout(timer);
+    timer = setTimeout(function(){ hint.textContent = ''; }, 2600);
+  }
+  document.querySelectorAll('.p-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){ say(btn.textContent + ' · 入口未接入本页'); });
+  });
+  document.querySelectorAll('.conv-item').forEach(function(item){
+    item.addEventListener('click', function(){
+      if (item.classList.contains('active')) return;
+      say('仅 01 会话有完整记录');
+    });
+  });
+})();
+</script>
+</body>
+</html>

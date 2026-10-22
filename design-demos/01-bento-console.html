@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>小智 · 电商智能客服 · Bento Console</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#08090A;
+    --line:rgba(255,255,255,.07);
+    --line2:rgba(255,255,255,.12);
+    --ink:#ECEFF3;
+    --ink2:#AAB2BC;
+    --ink3:#8A929C;
+    --brand:#5566D8;
+    --brand2:#8090EA;
+    --cyan:#4EA7FC;
+    --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC",-apple-system,"Segoe UI",sans-serif;
+    --mono:ui-monospace,"SF Mono",Consolas,"Cascadia Mono",monospace;
+  }
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:14px;
+    line-height:1.6;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+  }
+  /* 环境光：只用靛蓝 / 青蓝两侧微光，不做紫→粉 */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(780px 420px at 10% -10%, rgba(85,102,216,.20), transparent 68%),
+      radial-gradient(620px 460px at 104% 4%, rgba(78,167,252,.08), transparent 70%),
+      radial-gradient(900px 520px at 55% 118%, rgba(85,102,216,.07), transparent 72%);
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.55;
+    background-image:
+      linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+    background-size:64px 64px;
+    -webkit-mask-image:radial-gradient(860px 620px at 46% -6%, #000 0%, transparent 86%);
+    mask-image:radial-gradient(860px 620px at 46% -6%, #000 0%, transparent 86%);
+  }
+  ::selection{background:rgba(85,102,216,.4);color:#fff}
+  button,input{font-family:inherit;font-size:inherit;color:inherit}
+  :focus-visible{outline:1px solid rgba(85,102,216,.9);outline-offset:2px}
+
+  .app{
+    position:relative;z-index:1;
+    height:100vh;
+    padding:8px;
+    display:grid;
+    grid-template-columns:236px minmax(0,1fr) 340px;
+    grid-template-rows:50px minmax(0,1fr) 52px;
+    gap:10px;
+  }
+
+  /* ---- bento 单元基座 ---- */
+  .cell{
+    position:relative;
+    min-width:0;min-height:0;
+    background:linear-gradient(180deg, rgba(19,22,26,.94), rgba(9,10,12,.97));
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.045), 0 20px 46px -40px #000;
+  }
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+  /* ================= 顶栏（bento 第一格） ================= */
+  .topbar{
+    grid-column:1/-1;grid-row:1;
+    display:flex;align-items:center;gap:14px;
+    padding:0 12px 0 14px;
+  }
+  .brand{display:flex;align-items:center;gap:11px;flex:0 0 auto}
+  .mark{
+    width:32px;height:32px;border-radius:9px;flex:0 0 auto;
+    border:1px solid rgba(85,102,216,.45);
+    background:linear-gradient(160deg,#191D33,#0A0C13);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.09), 0 0 24px -12px rgba(85,102,216,1);
+    display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3px;padding:8px;
+  }
+  .mark i{display:block;border-radius:2px;background:var(--brand2);opacity:.9}
+  .mark i:nth-child(1){opacity:.45}
+  .mark i:nth-child(3){background:var(--cyan);opacity:.9}
+  .mark i:nth-child(4){opacity:.28}
+  .brand-txt{display:flex;flex-direction:column;gap:1px}
+  .brand-txt h1{font-size:17px;font-weight:600;letter-spacing:-.02em;line-height:1.25;color:#F4F6F9}
+  .brand-sub{font-size:12px;line-height:1.4;color:var(--ink2);letter-spacing:.01em;white-space:nowrap}
+  .divider{width:1px;height:28px;background:var(--line);flex:0 0 auto}
+
+  .thread-id{display:flex;align-items:center;gap:9px;min-width:0}
+  .ti-label{
+    font-size:12px;color:var(--ink3);letter-spacing:.08em;white-space:nowrap;
+    padding-right:9px;border-right:1px solid var(--line);
+  }
+  .ti-title{font-size:14px;color:#DFE4EA;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .top-actions{margin-left:auto;display:flex;align-items:center;gap:7px;flex:0 0 auto}
+  .tbtn{
+    height:30px;padding:0 12px;border-radius:8px;cursor:pointer;
+    border:1px solid var(--line2);
+    background:rgba(255,255,255,.028);
+    color:#D3D9E0;font-size:12.5px;letter-spacing:.01em;
+    transition:background .15s,border-color .15s,color .15s,transform .08s;
+  }
+  .tbtn:hover{background:rgba(255,255,255,.075);border-color:rgba(255,255,255,.22);color:#fff}
+  .tbtn:active{transform:translateY(1px);background:rgba(255,255,255,.05)}
+  .tbtn.primary{
+    background:var(--brand);border-color:#6C7AE2;color:#fff;
+  }
+  .tbtn.primary:hover{background:#6374E2;border-color:#7C89EA}
+
+  /* ================= 左：会话 bento 卡堆 ================= */
+  .rail{
+    grid-column:1;grid-row:2/4;
+    display:flex;flex-direction:column;gap:8px;
+    padding:11px 11px 10px;overflow:hidden;
+  }
+  .rail-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 2px 8px;margin-bottom:1px;
+    border-bottom:1px solid var(--line);
+  }
+  .rail-title{font-size:12px;letter-spacing:.16em;color:var(--ink3)}
+  .rail-count{font-family:var(--mono);font-size:12px;color:var(--ink2)}
+
+  .conv-group{display:flex;flex-direction:column;gap:7px}
+  .cg-label{
+    font-family:var(--mono);font-size:12px;letter-spacing:.12em;color:#808894;
+    padding:0 2px 1px;
+  }
+  .conv-group + .conv-group{margin-top:4px}
+  .conv-item{
+    position:relative;display:block;width:100%;text-align:left;cursor:pointer;
+    padding:10px 11px 10px 33px;border-radius:10px;
+    background:rgba(255,255,255,.018);
+    border:1px solid rgba(255,255,255,.05);
+    transition:background .16s,border-color .16s,transform .08s;
+  }
+  .conv-item:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12)}
+  .conv-item:active{transform:translateY(1px)}
+  .conv-item.active{
+    background:linear-gradient(180deg, rgba(85,102,216,.15), rgba(85,102,216,.045));
+    border-color:rgba(85,102,216,.42);
+    box-shadow:0 0 0 1px rgba(85,102,216,.10), 0 14px 34px -26px rgba(85,102,216,1);
+  }
+  .conv-idx{
+    position:absolute;left:11px;top:11px;
+    font-family:var(--mono);font-size:12px;line-height:1.4;color:#7E8794;
+  }
+  .conv-item.active .conv-idx{color:var(--brand2)}
+  .conv-title{font-size:14px;line-height:1.4;letter-spacing:-.015em;color:#D9DFE6}
+  .conv-item.active .conv-title{color:#FFFFFF}
+  .conv-meta{
+    display:block;margin-top:4px;font-family:var(--mono);font-size:12px;line-height:1.4;color:var(--ink3);
+    white-space:nowrap;
+  }
+  .tag{
+    display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;
+    font-size:12px;line-height:1;
+  }
+  .conv-tag{
+    position:absolute;right:10px;bottom:8px;
+    border:1px solid rgba(85,102,216,.38);
+    background:rgba(85,102,216,.14);color:#AFBAFA;
+  }
+  .conv-tag.muted{
+    border-color:rgba(255,255,255,.14);
+    background:rgba(255,255,255,.045);color:#B2BAC4;
+  }
+  .tag.live{border:1px solid rgba(78,167,252,.32);background:rgba(78,167,252,.12);color:#A8D5FF}
+
+  .rail-foot{
+    margin-top:auto;padding-top:8px;border-top:1px solid var(--line);
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .rail-foot .rf-1{font-size:12px;color:var(--ink3);letter-spacing:.06em}
+  .rail-foot .rf-2{font-family:var(--mono);font-size:12px;color:#7E8794}
+
+  /* ================= 中：对话（最大格） ================= */
+  .thread{
+    grid-column:2;grid-row:2;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  .msg-scroll{
+    flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+    padding:8px 16px 6px;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.16) transparent;
+  }
+  .msg-scroll::-webkit-scrollbar{width:8px}
+  .msg-scroll::-webkit-scrollbar-track{background:transparent}
+  .msg-scroll::-webkit-scrollbar-thumb{
+    background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:content-box;
+  }
+  .msg-scroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.26);background-clip:content-box}
+
+  .msg{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+  .msg + .msg{margin-top:7px}
+  .msg.user{align-items:flex-end}
+
+  /* 轨迹行：决策流 + 工具徽章 共用一条发丝线 */
+  .trace{
+    display:flex;align-items:center;gap:10px;
+    width:100%;max-width:800px;margin-bottom:4px;min-height:20px;
+  }
+  .flow-line{display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden}
+  .flow-node{
+    flex:0 0 auto;white-space:nowrap;
+    height:20px;line-height:18px;padding:0 7px;border-radius:5px;
+    font-size:12px;color:#98A2AD;
+    border:1px solid rgba(255,255,255,.07);
+    background:rgba(255,255,255,.022);
+  }
+  .flow-node .mono{font-size:12px;color:#B6BEC9}
+  .flow-intent{
+    color:#AEB9F7;border-color:rgba(85,102,216,.30);background:rgba(85,102,216,.10);
+  }
+  .flow-node.conf{color:#98A2AD}
+  .flow-node.conf b{font-family:var(--mono);font-weight:500;color:#E9EDF3}
+  .flow-arrow{flex:0 0 auto;font-size:11px;color:#6A727D;line-height:1}
+  .tool-badges{display:flex;gap:6px;margin-left:10px;flex:0 0 auto}
+  .badge{
+    display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:6px;
+    font-size:12px;line-height:1;white-space:nowrap;
+  }
+  .badge .bdot{width:5px;height:5px;border-radius:50%;flex:0 0 auto}
+  .badge .mono{font-size:12px}
+  .badge.ok{
+    color:#A9D6FF;background:rgba(78,167,252,.10);border:1px solid rgba(78,167,252,.28);
+  }
+  .badge.ok .bdot{background:var(--cyan);box-shadow:0 0 6px rgba(78,167,252,.85)}
+  .badge.running{
+    color:#B9C3FA;background:rgba(85,102,216,.13);border:1px solid rgba(85,102,216,.36);
+  }
+  .badge.running .bdot{
+    background:var(--brand2);box-shadow:0 0 0 3px rgba(85,102,216,.16);
+  }
+
+  /* 气泡 */
+  .bubble{
+    max-width:760px;
+    padding:9px 13px;border-radius:11px;
+    background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,255,255,.065);
+    color:#D5DBE2;font-size:14px;line-height:1.55;
+  }
+  .bubble b{font-weight:600;color:#FFFFFF}
+  .bubble .num{color:#EDF0F4;font-size:13.5px;font-weight:600}
+  .msg.user .bubble{
+    max-width:66%;
+    background:linear-gradient(180deg, rgba(85,102,216,.20), rgba(85,102,216,.12));
+    border:1px solid rgba(85,102,216,.34);
+    color:#EDEFF7;
+    border-radius:11px 11px 3px 11px;
+    padding:5px 11px;line-height:1.45;
+  }
+  .msg.user .bubble .num{color:#fff;font-weight:600;font-size:13.5px}
+
+  .cite{
+    display:inline-block;margin-left:2px;padding:0 4px;border-radius:4px;
+    font-family:var(--mono);font-size:11px;line-height:15px;vertical-align:1.5px;
+    color:#A9D6FF;background:rgba(78,167,252,.14);border:1px solid rgba(78,167,252,.32);
+    cursor:pointer;transition:background .15s,color .15s;
+  }
+  .cite:hover{background:rgba(78,167,252,.3);color:#fff}
+
+  /* 来源 chip + 反馈 同行 */
+  .msg-foot{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    width:100%;max-width:800px;margin-top:5px;
+  }
+  .source-list{display:flex;gap:7px;flex-wrap:wrap}
+  .source-chip{
+    display:inline-flex;align-items:center;gap:7px;height:22px;padding:0 9px 0 7px;
+    border-radius:6px;cursor:pointer;
+    border:1px solid var(--line);background:rgba(255,255,255,.028);
+    color:#B4BDC7;font-size:12px;line-height:1;
+    transition:background .15s,border-color .15s,color .15s,transform .08s;
+  }
+  .chip-idx{font-family:var(--mono);font-size:12px;color:#8C9BE8}
+  .source-chip:hover{
+    background:rgba(85,102,216,.14);border-color:rgba(85,102,216,.45);color:#EAEDF6;
+  }
+  .source-chip:active{transform:translateY(1px)}
+
+  .feedback{margin-left:2px;flex:0 0 auto}
+  .feedback-inner{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink3)}
+  .fb-btn{
+    width:25px;height:21px;display:grid;place-items:center;cursor:pointer;
+    border-radius:5px;border:1px solid var(--line);background:rgba(255,255,255,.02);
+    color:#9AA3AD;transition:background .15s,color .15s,border-color .15s,transform .08s;
+  }
+  .fb-btn:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.22);color:#fff}
+  .fb-btn:active{transform:translateY(1px)}
+  .fb-btn.active{color:#A9D6FF;background:rgba(78,167,252,.16);border-color:rgba(78,167,252,.45)}
+  .fb-btn.locked{opacity:.45;cursor:default}
+  .fb-btn.down svg{transform:rotate(180deg)}
+
+  /* 写操作确认卡（唯一带发光的实体） */
+  .confirm-card{
+    width:100%;max-width:600px;padding:8px 12px;border-radius:11px;
+    border:1px solid rgba(85,102,216,.36);
+    background:linear-gradient(180deg, rgba(85,102,216,.13), rgba(85,102,216,.035));
+    box-shadow:0 0 0 1px rgba(85,102,216,.08), 0 20px 46px -34px rgba(85,102,216,1);
+  }
+  .confirm-title{
+    display:flex;align-items:center;gap:8px;
+    font-size:14px;font-weight:600;color:#FFFFFF;letter-spacing:-.01em;
+  }
+  .confirm-title .ck{
+    font-family:var(--mono);font-size:12px;font-weight:400;line-height:16px;
+    padding:0 5px;border-radius:4px;color:#B4BFFA;
+    border:1px solid rgba(85,102,216,.42);background:rgba(85,102,216,.16);
+  }
+  .confirm-desc{margin-top:5px;font-size:14px;line-height:1.55;color:#CFD6DF}
+  .confirm-note{margin-top:4px;font-size:12px;line-height:1.55;color:var(--ink3)}
+  .confirm-actions{display:flex;gap:7px;margin-top:8px}
+  .confirm-btn{
+    height:28px;padding:0 13px;border-radius:7px;cursor:pointer;
+    font-size:13px;line-height:1;
+    border:1px solid var(--line2);background:rgba(255,255,255,.035);color:#C6CDD6;
+    transition:background .15s,border-color .15s,color .15s,transform .08s;
+  }
+  .confirm-btn:hover{background:rgba(255,255,255,.09);color:#fff;border-color:rgba(255,255,255,.24)}
+  .confirm-btn:active{transform:translateY(1px)}
+  .confirm-btn.primary{
+    background:var(--brand);border-color:#7180E8;color:#fff;
+  }
+  .confirm-btn.primary:hover{background:#6374E2;border-color:#8592EE}
+
+  .actions{display:flex;gap:7px;margin-top:7px}
+  .action-btn{
+    height:28px;padding:0 12px;border-radius:7px;cursor:pointer;
+    font-size:12.5px;line-height:1;
+    border:1px solid rgba(85,102,216,.4);background:rgba(85,102,216,.13);color:#BBC5FB;
+    transition:background .15s,border-color .15s,color .15s,transform .08s;
+  }
+  .action-btn:hover{background:rgba(85,102,216,.26);border-color:rgba(85,102,216,.62);color:#fff}
+  .action-btn:active{transform:translateY(1px)}
+  .action-btn.primary{background:var(--brand);border-color:#7180E8;color:#fff}
+  .action-btn.done{border-color:rgba(78,167,252,.35);background:rgba(78,167,252,.12);color:#A9D6FF}
+
+  /* 拒答气泡 */
+  .bubble.abstained{
+    background:rgba(255,255,255,.012);
+    border:1px dashed rgba(255,255,255,.17);
+    color:#C3CAD2;
+  }
+
+  /* ================= 底：输入（与上方同 gutter） ================= */
+  .composer{
+    grid-column:2;grid-row:3;
+    display:flex;align-items:center;gap:10px;
+    padding:0 11px;
+  }
+  .comp-field{
+    flex:1;min-width:0;display:flex;align-items:center;gap:9px;
+    height:38px;padding:0 12px;border-radius:9px;
+    background:rgba(255,255,255,.03);
+    border:1px solid var(--line);
+    transition:border-color .15s,box-shadow .15s,background .15s;
+  }
+  .comp-field:focus-within{
+    border-color:rgba(85,102,216,.55);
+    background:rgba(85,102,216,.06);
+    box-shadow:0 0 0 3px rgba(85,102,216,.12);
+  }
+  .comp-field .caret{
+    width:2px;height:14px;background:var(--brand2);opacity:.9;flex:0 0 auto;border-radius:1px;
+  }
+  .comp-field input{
+    flex:1;min-width:0;background:none;border:0;outline:0;
+    font-size:14px;color:#E9EDF3;
+  }
+  .comp-field input::placeholder{color:#868E99}
+  .comp-keys{
+    flex:0 0 auto;font-family:var(--mono);font-size:12px;color:#8A929C;white-space:nowrap;
+  }
+  .send{
+    flex:0 0 auto;width:38px;height:38px;border-radius:9px;cursor:pointer;
+    display:grid;place-items:center;
+    background:var(--brand);border:1px solid #7180E8;color:#fff;
+    transition:background .15s,box-shadow .15s,transform .08s;
+  }
+  .send:hover{background:#6374E2;border-color:#8592EE}
+  .send:active{transform:translateY(1px)}
+
+  /* ================= 右：常驻证据面板（唯一玻璃层） ================= */
+  .source-panel{
+    grid-column:3;grid-row:2/4;
+    display:flex;flex-direction:column;overflow:hidden;
+    background:linear-gradient(168deg, rgba(38,43,56,.60) 0%, rgba(21,24,32,.58) 44%, rgba(12,14,19,.62) 100%);
+    -webkit-backdrop-filter:blur(18px) saturate(125%);
+    backdrop-filter:blur(18px) saturate(125%);
+    border:1px solid rgba(255,255,255,.09);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.075), 0 34px 64px -52px #000;
+  }
+  .source-head{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:11px 14px;border-bottom:1px solid var(--line);flex:0 0 auto;
+  }
+  .source-head h2{font-size:13px;font-weight:600;letter-spacing:.06em;color:#E4E9EF}
+  .source-cite{
+    font-family:var(--mono);font-size:12px;line-height:16px;padding:1px 6px;border-radius:4px;
+    color:#A9D6FF;background:rgba(78,167,252,.12);border:1px solid rgba(78,167,252,.30);
+  }
+  #source-body{
+    flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;
+    padding:16px 15px 14px;overflow:auto;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.16) transparent;
+  }
+  #source-body::-webkit-scrollbar{width:7px}
+  #source-body::-webkit-scrollbar-thumb{
+    background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:content-box;
+  }
+  .score{display:flex;align-items:flex-end;gap:10px}
+  .score-num{
+    font-family:var(--mono);font-size:58px;line-height:.9;letter-spacing:-.055em;
+    color:#F3F6FA;font-weight:400;
+  }
+  .score-side{display:flex;flex-direction:column;gap:2px;padding-bottom:3px}
+  .score-label{font-size:12px;color:var(--ink3);letter-spacing:.05em}
+  .score-unit{font-family:var(--mono);font-size:12px;color:#7F8792}
+  .score-bar{
+    height:3px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:2px;
+  }
+  .score-bar i{
+    display:block;height:100%;width:72%;
+    background:linear-gradient(90deg,#3C4CB8, var(--cyan));
+    box-shadow:0 0 14px rgba(78,167,252,.55);
+  }
+  .score-bar{margin-top:10px}
+  .score-ret{font-family:var(--mono);font-size:12px;color:#8A929C;margin-top:9px;letter-spacing:.01em}
+  .doc-head{display:flex;flex-direction:column;gap:11px}
+  .doc-group{margin:auto 0;display:flex;flex-direction:column}
+  .doc-group .source-a{margin-top:12px}
+  .source-where{
+    font-size:14px;line-height:1.5;color:#9BA4AF;letter-spacing:.01em;
+  }
+  .source-where .sep{color:#5C646E;margin:0 3px}
+  .source-where .leaf{color:#E2E7ED}
+  .source-q{font-size:15px;line-height:1.6;color:#D2D8E0}
+  .doc{
+    margin:0;padding:12px 12px 4px;
+    background:rgba(255,255,255,.018);
+    border:1px solid rgba(255,255,255,.055);
+    border-radius:10px;
+  }
+  .source-a{margin-top:2px;border-top:1px solid var(--line);padding-top:2px}
+  .clause{
+    display:grid;grid-template-columns:20px 1fr;gap:8px;
+    padding:26px 0;border-bottom:1px solid rgba(255,255,255,.05);
+    font-size:14px;line-height:1.8;color:#E1E6EC;letter-spacing:.005em;
+  }
+  .clause:last-child{border-bottom:0}
+  .clause .cn{
+    font-family:var(--mono);font-size:12px;line-height:1.96;color:#7C8592;
+    font-variant-numeric:tabular-nums;
+  }
+  .clause em{font-style:normal;color:#FFFFFF;font-weight:600}
+  .source-meta{
+    padding-top:0;
+    font-family:var(--mono);font-size:12px;line-height:1.9;color:#8D95A0;
+    font-variant-numeric:tabular-nums;
+  }
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== bento 第 1 格：顶栏 ===== -->
+  <header class="cell topbar">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="brand-txt">
+        <h1>小智</h1>
+        <span class="brand-sub">电商智能客服 · 会查单 · 会引用 · 会拒答</span>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="thread-id">
+      <span class="ti-label">当前会话</span>
+      <span class="ti-title">订单 1001 怎么还没发货</span>
+      <span class="tag live">进行中</span>
+    </div>
+    <div class="top-actions">
+      <button class="tbtn primary">新会话</button>
+      <button class="tbtn">飞轮审核</button>
+      <button class="tbtn">主题分布</button>
+    </div>
+  </header>
+
+  <!-- ===== bento 左列：会话卡堆 ===== -->
+  <aside class="cell rail">
+    <div class="rail-head">
+      <span class="rail-title">会话</span>
+      <span class="rail-count">04</span>
+    </div>
+
+    <div class="conv-group">
+      <span class="cg-label">今天</span>
+
+    <button class="conv-item active">
+      <span class="conv-idx">01</span>
+      <span class="conv-title">订单 1001 怎么还没发货</span>
+      <span class="conv-meta">今天 14:22</span>
+      <span class="tag conv-tag">进行中</span>
+    </button>
+
+    <button class="conv-item">
+      <span class="conv-idx">02</span>
+      <span class="conv-title">退款到账要多久</span>
+      <span class="conv-meta">今天 11:40</span>
+    </button>
+    </div>
+
+    <div class="conv-group">
+      <span class="cg-label">昨天</span>
+
+    <button class="conv-item">
+      <span class="conv-idx">03</span>
+      <span class="conv-title">尺码不合适能换吗</span>
+      <span class="conv-meta">昨天 20:15</span>
+    </button>
+
+    <button class="conv-item">
+      <span class="conv-idx">04</span>
+      <span class="conv-title">帮我改一下收货地址</span>
+      <span class="conv-meta">昨天 09:03</span>
+      <span class="tag conv-tag muted">已转人工</span>
+    </button>
+    </div>
+
+    <div class="rail-foot">
+      <span class="rf-1">本地运行</span>
+      <span class="rf-2">FastAPI + LangGraph</span>
+    </div>
+  </aside>
+
+  <!-- ===== bento 中央：对话 ===== -->
+  <main class="cell thread">
+    <div class="msg-scroll">
+
+      <!-- ① -->
+      <div class="msg user">
+        <div class="bubble">订单 <span class="num">1001</span> 怎么还没发货</div>
+      </div>
+
+      <!-- ② -->
+      <div class="msg assistant">
+        <div class="trace">
+          <div class="flow-line">
+            <span class="flow-node flow-intent">意图：查订单</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">路由：<span class="mono">order_tool</span></span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">工具：<span class="mono">query_order</span></span>
+          </div>
+          <div class="tool-badges">
+            <span class="badge ok"><i class="bdot"></i><span class="mono">query_order</span> · 已完成</span>
+          </div>
+        </div>
+        <div class="bubble">订单 <b class="num">1001</b> 是「无线蓝牙降噪耳机」× <b class="num">1</b>，实付 <b class="num">¥399.00</b>，下单时间 <b class="num">2026-08-07</b>，当前状态 <b>待发货</b>。仓库一般在付款后 <b class="num">48</b> 小时内出库；今天已经第 <b class="num">3</b> 天，建议直接催发。</div>
+        <div class="msg-foot">
+          <div class="source-list">
+            <button class="source-chip"><span class="chip-idx">1</span>售后处理手册 &gt; 发货时效</button>
+          </div>
+          <div class="feedback">
+            <div class="feedback-inner">
+              <span>这条答案有帮助吗</span>
+              <button class="fb-btn up" aria-label="有帮助">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5"></path><path d="M6 11l6-6 6 6"></path></svg>
+              </button>
+              <button class="fb-btn down" aria-label="没帮助">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5"></path><path d="M6 11l6-6 6 6"></path></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ③ -->
+      <div class="msg user">
+        <div class="bubble">能帮我催一下吗</div>
+      </div>
+
+      <!-- ④ -->
+      <div class="msg assistant">
+        <div class="trace">
+          <div class="tool-badges" style="margin-left:0">
+            <span class="badge running"><i class="bdot"></i><span class="mono">create_ticket</span> · 待确认</span>
+          </div>
+        </div>
+        <div class="confirm-card" data-state="approve">
+          <div class="confirm-title">提交工单 · 物流催发 <span class="ck">写操作</span></div>
+          <div class="confirm-desc">订单 <span class="num">1001</span> 已超 <span class="num">48</span> 小时未出库，申请仓库优先出库并回电告知预计发出时间。</div>
+          <div class="confirm-note">确认后才会提交给人工客服，取消不建单。</div>
+          <div class="confirm-actions">
+            <button class="confirm-btn primary">确认提交</button>
+            <button class="confirm-btn">取消</button>
+          </div>
+        </div>
+        <div class="bubble" style="margin-top:6px">提交前需要你确认一下——我不会替你直接建单。</div>
+      </div>
+
+      <!-- ⑤ -->
+      <div class="msg user">
+        <div class="bubble">退款到账要多久</div>
+      </div>
+
+      <!-- ⑥ 主视觉 -->
+      <div class="msg assistant">
+        <div class="trace">
+          <div class="flow-line">
+            <span class="flow-node flow-intent">意图：售后咨询</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">路由：<span class="mono">kb_rag</span></span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node conf">检索 <b>5</b> 条 · 命中 <b>2</b> 条 · 置信度 <b>0.72</b></span>
+          </div>
+        </div>
+        <div class="bubble">退货退款在仓库<b>验收通过后 3 个工作日内</b>发起退款<span class="cite">[1]</span>；到账时间看支付渠道，原路退回微信/支付宝一般 <span class="num">1–3</span> 个工作日，银行卡 <span class="num">3–7</span> 个工作日<span class="cite">[2]</span>。客服侧只说明发起时效，不承诺具体到账日期。</div>
+        <div class="msg-foot">
+          <div class="source-list">
+            <button class="source-chip"><span class="chip-idx">1</span>售后处理手册 &gt; 工单类型与时效</button>
+            <button class="source-chip"><span class="chip-idx">2</span>售后处理手册 &gt; 退货流程</button>
+          </div>
+          <div class="feedback">
+            <div class="feedback-inner">
+              <span>这条答案有帮助吗</span>
+              <button class="fb-btn up"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5"></path><path d="M6 11l6-6 6 6"></path></svg></button>
+              <button class="fb-btn down"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V5"></path><path d="M6 11l6-6 6 6"></path></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑦ -->
+      <div class="msg user">
+        <div class="bubble">那双十一买的东西也能这样退吗</div>
+      </div>
+
+      <!-- ⑧ -->
+      <div class="msg assistant">
+        <div class="trace">
+          <div class="flow-line">
+            <span class="flow-node flow-intent">意图：售后咨询</span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node">路由：<span class="mono">kb_rag</span></span>
+            <span class="flow-arrow">→</span>
+            <span class="flow-node conf">检索 <b>5</b> 条 · 命中 <b>0</b> 条 · 置信度 <b>0.31</b></span>
+          </div>
+        </div>
+        <div class="bubble abstained">这一点我查不到确切条款——大促期间的退换规则和日常不同，知识库里还没有这一条。已经记下来交给人工补充，你可以先转人工确认。</div>
+        <div class="actions">
+          <button class="action-btn">转人工</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ===== bento 底格：输入 ===== -->
+  <form class="cell composer" onsubmit="return false">
+    <div class="comp-field">
+      <span class="caret" aria-hidden="true"></span>
+      <input type="text" placeholder="向小智提问…" aria-label="输入问题">
+    </div>
+    <span class="comp-keys">Enter 发送</span>
+    <button class="send" aria-label="发送">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13"></path><path d="M12 5l7 7-7 7"></path></svg>
+    </button>
+  </form>
+
+  <!-- ===== bento 右列：常驻证据面板 ===== -->
+  <section class="cell source-panel" id="source-panel">
+    <div class="source-head">
+      <h2>来源原文</h2>
+      <span class="source-cite">引用 [1]</span>
+    </div>
+    <div id="source-body">
+
+      <div class="score-block">
+        <div class="score">
+          <span class="score-num">0.72</span>
+          <span class="score-side">
+            <span class="score-label">命中相似度</span>
+            <span class="score-unit">知识块 #2</span>
+          </span>
+        </div>
+        <div class="score-bar"><i></i></div>
+        <div class="score-ret">检索 5 条 · 命中 2 条</div>
+      </div>
+
+      <div class="doc-group">
+        <div class="doc-head">
+          <div class="source-where">售后处理手册 <span class="sep">&gt;</span> <span class="leaf">工单类型与时效</span></div>
+          <p class="source-q">问：退货退款多久能到账</p>
+        </div>
+
+        <div class="doc source-a">
+          <div class="clause"><span class="cn">01</span><p>退货退款：2 小时内响应；</p></div>
+          <div class="clause"><span class="cn">02</span><p>到仓验收通过后 <em>3 个工作日内</em>退款；</p></div>
+          <div class="clause"><span class="cn">03</span><p>需要寄回商品；</p></div>
+          <div class="clause"><span class="cn">04</span><p>超 3 个工作日未完结自动升级。</p></div>
+        </div>
+      </div>
+
+      <div class="source-meta">命中相似度 0.72 · 知识块 #2 · vector_id 2</div>
+
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
