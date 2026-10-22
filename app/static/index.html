@@ -4,42 +4,59 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>小智 · 电商智能客服</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <div id="app">
     <header id="topbar">
       <div class="brand">
-        <span class="avatar">🤖</span>
-        <div>
-          <div class="title">小智 · 电商智能客服</div>
-          <div class="subtitle">CH10 · 工具+确认流 · RAG 检索 · 三层上下文 · 主题分类旁路</div>
-        </div>
+        <span class="mark"></span>
+        <span class="brand-name">小智</span>
+        <span class="brand-sub">电商智能客服 · 会查单 · 会引用 · 会拒答</span>
       </div>
-      <button id="new-chat" title="开一轮新会话">新会话</button>
+      <div class="top-right">
+        <a class="top-link" href="/admin/topics">主题分布</a>
+        <a class="top-link" href="/admin/review">飞轮审核</a>
+        <button id="conv-toggle" class="icon-btn" type="button" title="会话列表" aria-label="会话列表">
+          <svg width="13" height="11" viewBox="0 0 13 11" fill="none" aria-hidden="true"><path d="M1 1.5h11M1 5.5h11M1 9.5h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+        <button id="new-chat" class="btn-ghost" type="button">+ 新对话</button>
+      </div>
     </header>
 
-    <div id="body">
-      <aside id="conv-sidebar" aria-label="会话列表">
-        <div class="conv-head">会话</div>
-        <div id="conv-list"></div>
-      </aside>
-      <main id="messages" aria-live="polite"></main>
-    </div>
+    <main id="messages" class="stream" aria-live="polite"></main>
 
     <footer id="composer">
-      <input id="input" type="text" placeholder="问点什么吧，如：邮费是多少 / 订单1001的物流到哪了" autocomplete="off" />
-      <button id="send">发送</button>
+      <div class="input-row">
+        <input id="input" type="text" placeholder="问点什么吧，如：邮费是多少 / 订单1001的物流到哪了" autocomplete="off" />
+        <button id="send" type="button">发送</button>
+      </div>
+      <div class="composer-note">
+        <span>小智是 AI 助手，涉及资金与工单的操作会先请你确认。</span>
+      </div>
     </footer>
   </div>
 
-  <aside id="source-panel" aria-label="来源原文">
-    <div class="source-head">
-      <span>来源原文</span>
-      <button id="source-close" type="button" title="关闭">✕</button>
+  <div id="scrim"></div>
+
+  <aside id="conv-drawer" class="drawer" aria-label="会话列表">
+    <div class="drawer-head">
+      <span class="drawer-title">会话</span>
+      <button id="conv-close" class="drawer-close" type="button" title="关闭">✕</button>
     </div>
-    <div id="source-body"></div>
+    <div class="drawer-body" id="conv-list"></div>
+    <div class="conv-foot">同一浏览器的历史会话</div>
   </aside>
+
+  <aside id="source-panel" class="drawer" aria-label="来源原文">
+    <div class="drawer-head">
+      <span class="drawer-title">来源原文</span>
+      <button id="source-close" class="drawer-close" type="button" title="关闭">✕</button>
+    </div>
+    <div class="drawer-body" id="source-body"></div>
+  </aside>
+
   <script src="/chat.js"></script>
 </body>
 </html>

@@ -74,7 +74,7 @@
 - **异步摘要**：层 2 的**用量**（截断前）超预算才在后台起一次压缩，压成一段追加进 `conversation_summaries`，边界追到层 1 起点；不 await、失败只记日志。触发看用量不看条数——工具结果不落消息表，数条数看不见它涨。
 - **拼装顺序**：`system`（人设 + 红线 + 工具定义）→ 层 2 → 层 1 → 当前这句 →（梗概 + 检索证据）。梗概不单独占 system：上游会把所有 system 上提合并，工具定义被挤到可变内容之后，前缀缓存整段作废。
 - **可观测**：每轮 `history_ctx`（摘要行 + 滑窗，闲聊兜底轮也打）、主力 Agent 轮 `model_ctx`（梗概全文 + 滑窗逐条 + 条数 + token），后台摘要的 trigger / start / done / skip / fail 全留痕。
-- **多会话**：State 的 `messages` 挂 `add_messages` reducer 存全量（checkpoint 落盘），喂模型的是另一份裁过、带梗概的精简版，两者互不影响；前端侧栏列出全部会话，点开回载原文接着聊。
+- **多会话**：State 的 `messages` 挂 `add_messages` reducer 存全量（checkpoint 落盘），喂模型的是另一份裁过、带梗概的精简版，两者互不影响；前端顶栏的会话按钮拉开抽屉列出全部会话，点开回载原文接着聊（抽屉默认收起，首屏只留对话）。
 
 **分流器正式版**（CH06，`app/agent/`）：
 
@@ -260,7 +260,7 @@ grep -c "model_ctx" <日志文件>       # 进 Agent 的轮次
 grep -c "history_ctx" <日志文件>     # 每轮一次，闲聊兜底轮也有
 grep "summary \(trigger\|start\|done\|skip\|fail\)" <日志文件>
 
-# ⑤ 侧栏多会话切换回载：浏览器开两个会话各聊两句 → 左侧点回第一个
+# ⑤ 会话抽屉多会话切换回载：浏览器开两个会话各聊两句 → 点顶栏会话按钮，在抽屉里点回第一个
 #    期望: 历史原文逐条回载、接着问「那它能退吗」指代仍能补全
 curl -s --noproxy '*' 'http://127.0.0.1:8010/api/v1/conversations?user_key=ch07-a&limit=5'
 curl -s --noproxy '*' 'http://127.0.0.1:8010/api/v1/conversations/<id>/messages?user_key=ch07-a'

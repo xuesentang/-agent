@@ -1,4 +1,8 @@
 /* 小智客服聊天页逻辑:fetch + ReadableStream 消费 POST SSE(EventSource 不支持 POST)。
+ * 版式约定(和 style.css 对齐):单栏对话流,一屏只有对话。
+ *   - 会话列表/来源原文都是抽屉,默认收起,不占版面;
+ *   - 一条助手回答 = 头像 + [决策流一行, 工具徽章, 正文, 「依据+反馈」一行];
+ *   - 决策流/徽章/角标全部用等宽字与状态点,不用 emoji——演示时字体环境不可控。
  * ch06 增量:
  *   - 订单选择器:缺订单号的退款请求,后端回 order_options,前端渲染可点选的订单卡片,
  *     点一张就用「同一句原话 + 这个订单号」重发,流程接着走;
@@ -7,8 +11,8 @@
  *   - 顶部流程行:把图走过的节点按顺序显示出来(验收要求"看得见强制检索被走到");
  *   - 「转人工」「建工单」两个按钮:互不绑定,点哪个算哪个,都不点就继续聊。
  * ch04 增量:
- *   - citations 事件:把答案里的 [n] 渲染成可点角标,点开右侧面板看来源章节与原文;
- *   - 每条回答挂 👍/👎,点一次点亮并锁定(纯前端采集,为后面的数据飞轮留入口)。
+ *   - citations 事件:把答案里的 [n] 渲染成可点角标,点开右侧抽屉看来源章节与原文;
+ *   - 每条回答挂 有用/没用,点一次点亮并锁定(为 ch09 的数据飞轮接后端)。
  */
 
 const messagesEl = document.getElementById("messages");
@@ -18,7 +22,11 @@ const newChatBtn = document.getElementById("new-chat");
 const sourcePanel = document.getElementById("source-panel");
 const sourceBody = document.getElementById("source-body");
 const sourceClose = document.getElementById("source-close");
+const convDrawer = document.getElementById("conv-drawer");
+const convToggleBtn = document.getElementById("conv-toggle");
+const convCloseBtn = document.getElementById("conv-close");
 const convListEl = document.getElementById("conv-list");
+const scrim = document.getElementById("scrim");
 
 // 会话标识:session_id 是用户键(同一浏览器连续聊);conversation_id 由服务端
 // done 事件回传。新会话按钮置 pendingNewConversation——下一条消息带
@@ -40,6 +48,62 @@ function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+/* ---------------------------------------------------------------- 抽屉 */
+
+function openDrawer(drawer) {
+  sourcePanel.classList.remove("open");
+  convDrawer.classList.remove("open");
+  drawer.classList.add("open");
+  scrim.classList.add("on");
+}
+function closeDrawers() {
+  sourcePanel.classList.remove("open");
+  convDrawer.classList.remove("open");
+  scrim.classList.remove("on");
+}
+
+/* ---------------------------------------------------------------- 空状态 */
+
+// 没有对话时首屏给个落点,顺便把「它能答什么」演出来;发过一句话就撤。
+const EMPTY_SUGGESTIONS = [
+  "订单 1001 怎么还没发货",
+  "退款到账要多久",
+  "能帮我改一下收货地址吗",
+];
+
+function renderEmpty() {
+  if (messagesEl.querySelector(".empty")) return;
+  const box = document.createElement("div");
+  box.className = "empty";
+  const mark = document.createElement("span");
+  mark.className = "mark";
+  const title = document.createElement("div");
+  title.className = "empty-title";
+  title.textContent = "和小智说点什么";
+  const sub = document.createElement("div");
+  sub.className = "empty-sub";
+  sub.textContent = "会查订单、会引用条款，拿不准会直说";
+  const chips = document.createElement("div");
+  chips.className = "empty-chips";
+  EMPTY_SUGGESTIONS.forEach((text) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "empty-chip";
+    chip.textContent = text;
+    chip.addEventListener("click", () => sendMessage(text, null));
+    chips.appendChild(chip);
+  });
+  box.append(mark, title, sub, chips);
+  messagesEl.appendChild(box);
+}
+
+function clearEmpty() {
+  const box = messagesEl.querySelector(".empty");
+  if (box) box.remove();
+}
+
+/* ---------------------------------------------------------------- 消息骨架 */
+
 function addUserBubble(text) {
   const msg = document.createElement("div");
   msg.className = "msg user";
@@ -54,43 +118,68 @@ function addUserBubble(text) {
 function addAssistantTurn() {
   const msg = document.createElement("div");
   msg.className = "msg assistant";
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  const col = document.createElement("div");
+  col.className = "col";
+  const flow = null; // 决策流:第一个节点事件到了才建
   const badges = document.createElement("div");
   badges.className = "tool-badges";
   const bubble = document.createElement("div");
   bubble.className = "bubble";
+  const meta = document.createElement("div");
+  meta.className = "meta-row";
   const sources = document.createElement("div");
   sources.className = "source-list";
   const feedback = document.createElement("div");
   feedback.className = "feedback";
   const actions = document.createElement("div");
   actions.className = "actions";
-  msg.appendChild(badges);
-  msg.appendChild(bubble);
-  msg.appendChild(sources);
-  msg.appendChild(actions);
-  msg.appendChild(feedback);
+  meta.append(sources, feedback);
+  col.append(badges, bubble, meta, actions);
+  msg.append(avatar, col);
   messagesEl.appendChild(msg);
   scrollToBottom();
   // 徽章按 tool_call_id 对号:一轮可能并行调多个工具,事件流是
   // start(A) start(B) end(A) end(B),必须按 id 更新。
   return {
     msg,
+    col,
     badges,
     bubble,
     sources,
-    actions,
     feedback,
+    actions,
     badgeMap: new Map(),
     citations: [],
-    flow: null,
+    flow,
     flowNodes: [],
   };
+}
+
+// 历史回载:同样有头像,但没有决策流/徽章/反馈——那些是实时过程的痕迹,补不出来
+function addAssistantBubble(text) {
+  const msg = document.createElement("div");
+  msg.className = "msg assistant";
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  const col = document.createElement("div");
+  col.className = "col";
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;
+  col.appendChild(bubble);
+  msg.append(avatar, col);
+  messagesEl.appendChild(msg);
+  scrollToBottom();
 }
 
 function addBadge(turn, { id, label, cls }) {
   const badge = document.createElement("span");
   badge.className = "badge " + cls;
-  badge.textContent = label;
+  const dot = document.createElement("span");
+  dot.className = "dot";
+  badge.append(dot, document.createTextNode(label));
   turn.badges.appendChild(badge);
   if (id) turn.badgeMap.set(id, badge);
   return badge;
@@ -111,38 +200,54 @@ const NODE_LABELS = {
   log_trace: "日志",
 };
 
+function ensureFlow(turn) {
+  if (turn.flow) return turn.flow;
+  turn.flow = document.createElement("div");
+  turn.flow.className = "flow-line";
+  turn.col.insertBefore(turn.flow, turn.badges);
+  return turn.flow;
+}
+
 function appendFlowNode(turn, name) {
   const label = NODE_LABELS[name] || name;
   if (turn.flowNodes[turn.flowNodes.length - 1] === label) return; // 进出各一次,只记一次
   turn.flowNodes.push(label);
 
-  if (!turn.flow) {
-    turn.flow = document.createElement("div");
-    turn.flow.className = "flow-line";
-    turn.msg.insertBefore(turn.flow, turn.bubble);
-  }
-  if (turn.flow.childElementCount) {
+  const flow = ensureFlow(turn);
+  if (flow.childElementCount) {
     const arrow = document.createElement("span");
     arrow.className = "flow-arrow";
     arrow.textContent = "→";
-    turn.flow.appendChild(arrow);
+    flow.appendChild(arrow);
   }
   const chip = document.createElement("span");
-  chip.className = "flow-node" + (name === "retrieve_knowledge" ? " hit" : "");
   chip.textContent = label;
-  turn.flow.appendChild(chip);
+  flow.appendChild(chip);
 }
 
 function markIntent(turn, data) {
-  if (!turn.flow) {
-    turn.flow = document.createElement("div");
-    turn.flow.className = "flow-line";
-    turn.msg.insertBefore(turn.flow, turn.bubble);
-  }
+  const flow = ensureFlow(turn);
   const chip = document.createElement("span");
-  chip.className = "flow-node flow-intent";
+  chip.className = "flow-intent";
   chip.textContent = "意图:" + data.intent;
-  turn.flow.appendChild(chip);
+  // 意图事件可能晚于节点事件到,补一个箭头隔开,不然和上一个节点糊成一行
+  if (flow.childElementCount) {
+    const arrow = document.createElement("span");
+    arrow.className = "flow-arrow";
+    arrow.textContent = "→";
+    flow.insertBefore(arrow, flow.firstChild);
+  }
+  flow.insertBefore(chip, flow.firstChild);
+}
+
+// ch09:置信度闸的读数跟在流程行末尾,低于阈值时用强调底色——拒答不靠弹窗,
+// 靠这一行让人自己看见「它为什么不敢答」。
+function markConfidence(turn, confidence, passed) {
+  const flow = ensureFlow(turn);
+  const chip = document.createElement("span");
+  chip.className = "conf" + (passed ? "" : " low");
+  chip.textContent = "置信度 " + Number(confidence).toFixed(2);
+  flow.appendChild(chip);
 }
 
 /* ---------------------------------------------------------------- 动作按钮 */
@@ -163,7 +268,7 @@ function renderActions(turn, actions) {
       btn.textContent = action.label + "(已处理)";
       if (action.id === "transfer_human") await doTransfer(btn);
       else if (action.id === "create_ticket") await doCreateTicket(btn);
-      else if (action.id === "apply_refund") await openRefundForm(selectedOrderId);
+      else if (action.id === "apply_refund") await openRefundForm(selectedOrderId, turn);
     });
     turn.actions.appendChild(btn);
   });
@@ -172,17 +277,6 @@ function renderActions(turn, actions) {
 function addSystemBubble(text, cls) {
   const msg = document.createElement("div");
   msg.className = "msg " + (cls || "system");
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-  bubble.textContent = text;
-  msg.appendChild(bubble);
-  messagesEl.appendChild(msg);
-  scrollToBottom();
-}
-
-function addAssistantBubble(text) {
-  const msg = document.createElement("div");
-  msg.className = "msg assistant";
   const bubble = document.createElement("div");
   bubble.className = "bubble";
   bubble.textContent = text;
@@ -260,7 +354,7 @@ function renderOrderCards(turn, orders) {
     card.addEventListener("click", () => pickOrder(wrap, o.order_id));
     wrap.appendChild(card);
   });
-  turn.msg.appendChild(wrap);
+  turn.col.appendChild(wrap);
   scrollToBottom();
 }
 
@@ -286,6 +380,9 @@ function renderConfirmCard(turn, data) {
   wrap.className = "confirm-card";
   wrap.dataset.state = "pending";
 
+  const kicker = document.createElement("span");
+  kicker.className = "kicker";
+  kicker.textContent = "写操作 · 等待确认";
   const title = document.createElement("div");
   title.className = "confirm-title";
   title.textContent = "提交工单 · " + (data.ticket_type || "咨询");
@@ -308,8 +405,8 @@ function renderConfirmCard(turn, data) {
   no.textContent = "取消";
   row.append(ok, no);
 
-  wrap.append(title, desc, note, row);
-  turn.msg.appendChild(wrap);
+  wrap.append(kicker, title, desc, note, row);
+  turn.col.appendChild(wrap);
   scrollToBottom();
 
   const payload = { ticket_type: data.ticket_type || "", description: data.description || "" };
@@ -324,10 +421,10 @@ async function submitConfirm(wrap, turn, decision, payload) {
   wrap.querySelectorAll("button").forEach((b) => {
     b.disabled = true;
   });
-  const tag = document.createElement("div");
-  tag.className = "confirm-note";
-  tag.textContent = decision === "approve" ? "已确认,正在提交…" : "已取消,不提交工单。";
-  wrap.appendChild(tag);
+  wrap.querySelector(".kicker").textContent = decision === "approve" ? "已确认 · 正在提交" : "已取消 · 不提交工单";
+  wrap.querySelector(".confirm-note").textContent = decision === "approve"
+    ? "工单已提交给人工客服,预计 2 小时内响应。"
+    : "已取消,本次不会创建任何工单。";
   pendingConfirm = null;
 
   sendBtn.disabled = true;
@@ -371,7 +468,7 @@ async function loadRefundReasons() {
   return refundReasons;
 }
 
-async function openRefundForm(orderId) {
+async function openRefundForm(orderId, turn) {
   if (!orderId) {
     showError("还没有确定订单号,请先点选订单");
     return;
@@ -406,7 +503,7 @@ async function openRefundForm(orderId) {
   cancel.textContent = "取消";
   row.append(submit, cancel);
   box.append(title, label, row);
-  messagesEl.appendChild(box);
+  (turn && turn.col ? turn.col : messagesEl).appendChild(box);
   scrollToBottom();
 
   cancel.addEventListener("click", () => box.remove());
@@ -450,19 +547,24 @@ function openSource(citation) {
   if (!citation) return;
   sourceBody.innerHTML = "";
   const where = document.createElement("div");
-  where.className = "source-where";
-  where.textContent = "章节:" + (citation.section_path || citation.question || "知识库");
+  where.className = "src-where";
+  where.textContent = citation.section_path || citation.question || "知识库";
+  const block = document.createElement("div");
+  block.className = "src-block";
   const q = document.createElement("div");
-  q.className = "source-q";
+  q.className = "src-q";
   q.textContent = citation.question || "";
   const a = document.createElement("div");
-  a.className = "source-a";
+  a.className = "src-a";
   a.textContent = citation.answer || "";
+  block.append(q, a);
   const meta = document.createElement("div");
-  meta.className = "source-meta";
+  meta.className = "src-meta";
   meta.textContent = "chunk #" + citation.chunk_id + " · 相关度 " + Number(citation.score).toFixed(4);
-  sourceBody.append(where, q, a, meta);
+  sourceBody.append(where, block, meta);
+  convDrawer.classList.remove("open");
   sourcePanel.classList.add("open");
+  scrim.classList.add("on");
 }
 
 // 把答案文本里的 [n] 变成可点角标。用 DOM 拼,不用 innerHTML——答案来自模型,
@@ -500,11 +602,21 @@ function decorateCitations(turn) {
 function renderSources(turn) {
   turn.sources.innerHTML = "";
   if (!turn.citations.length) return;
+  // 同一章节可能被多个 chunk 命中,依据列表按章节去重——列五条同名的是噪音
+  const seen = new Map();
   turn.citations.forEach((c) => {
+    const key = c.section_path || c.question || "知识库";
+    if (!seen.has(key)) seen.set(key, c);
+  });
+  seen.forEach((c) => {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "source-chip";
-    item.textContent = "[" + c.n + "] " + (c.section_path || c.question || "知识库");
+    const mark = document.createElement("span");
+    mark.className = "chip-mark";
+    const text = document.createElement("span");
+    text.textContent = c.section_path || c.question || "知识库";
+    item.append(mark, text);
     item.addEventListener("click", () => openSource(c));
     turn.sources.appendChild(item);
   });
@@ -542,19 +654,19 @@ function renderFeedback(turn) {
   const wrap = document.createElement("div");
   wrap.className = "feedback-inner";
   const label = document.createElement("span");
-  label.className = "feedback-label";
-  label.textContent = "这个回答有帮助吗?";
+  label.className = "fb-q";
+  label.textContent = "有帮助吗";
   const up = document.createElement("button");
   up.type = "button";
   up.className = "fb-btn";
-  up.textContent = "👍";
+  up.textContent = "有用";
   const down = document.createElement("button");
   down.type = "button";
   down.className = "fb-btn";
-  down.textContent = "👎";
+  down.textContent = "没用";
   const done = document.createElement("span");
   done.className = "feedback-done";
-  done.textContent = "已反馈";
+  done.textContent = "已记录";
   done.hidden = true;
 
   function pick(btn, other, value) {
@@ -590,6 +702,9 @@ function handleEvent(event, data, turn) {
       renderOrderCards(turn, data.orders);
       break;
     case "gate":
+      if (typeof data.confidence === "number") {
+        markConfidence(turn, data.confidence, !!data.passed);
+      }
       if (!data.passed) {
         addSystemBubble("证据不足,已转入兜底话术(可直接转人工或建工单)");
       }
@@ -597,14 +712,17 @@ function handleEvent(event, data, turn) {
     case "tool_start":
       addBadge(turn, {
         id: data.tool_call_id,
-        label: "⏳ " + data.name + " 调用中…",
+        label: data.name + " 调用中…",
         cls: "running",
       });
       break;
     case "tool_end": {
       const badge = turn.badgeMap.get(data.tool_call_id);
       if (badge) {
-        badge.textContent = (data.ok ? "✅ " : "❌ ") + data.name;
+        badge.textContent = "";
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        badge.append(dot, document.createTextNode(data.name + (data.ok ? " · 完成" : " · 失败")));
         badge.className = "badge " + (data.ok ? "ok" : "fail");
       }
       break;
@@ -624,7 +742,7 @@ function handleEvent(event, data, turn) {
     case "done":
       conversationId = data.conversation_id;
       turn.conversationId = data.conversation_id;
-      loadConversations(); // 新会话会出现在侧栏
+      loadConversations(); // 新会话会出现在抽屉里
       if (data.finish_reason === "abstain") turn.bubble.classList.add("abstained");
       renderActions(turn, data.actions);
       // 挂在确认上的那一轮还没答完,先别问「有帮助吗」
@@ -638,9 +756,9 @@ function handleEvent(event, data, turn) {
   }
 }
 
-/* ---------------------------------------------------------------- 多会话侧栏 */
+/* ---------------------------------------------------------------- 多会话抽屉 */
 
-// 侧栏加载失败只降级,不影响聊天(需求 7)
+// 抽屉加载失败只降级,不影响聊天(需求 7)
 async function loadConversations() {
   if (!convListEl) return;
   try {
@@ -649,35 +767,46 @@ async function loadConversations() {
     const data = await resp.json();
     renderConversations(data.conversations || []);
   } catch (err) {
-    convListEl.innerHTML = "";
+    convListEl.innerHTML = '<p class="conv-empty">会话列表加载失败,聊天不受影响</p>';
   }
 }
 
 function renderConversations(items) {
   convListEl.innerHTML = "";
   if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "conv-item";
+    const empty = document.createElement("p");
+    empty.className = "conv-empty";
     empty.textContent = "还没有会话,先聊一句吧";
     convListEl.appendChild(empty);
     return;
   }
-  items.forEach((c) => {
-    const item = document.createElement("div");
+  items.forEach((c, i) => {
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = "conv-item" + (c.conversation_id === conversationId ? " active" : "");
     item.dataset.convId = c.conversation_id;
-    const text = document.createElement("div");
-    text.textContent = c.preview || "(空会话)";
+    const top = document.createElement("span");
+    top.className = "conv-top";
+    const num = document.createElement("span");
+    num.className = "conv-num";
+    num.textContent = String(i + 1).padStart(2, "0");
+    const title = document.createElement("span");
+    title.className = "conv-title";
+    title.textContent = c.preview || "(空会话)";
+    top.append(num, title);
+    const meta = document.createElement("span");
+    meta.className = "conv-meta";
+    const time = document.createElement("span");
+    time.className = "conv-time";
+    time.textContent = (c.created_at ? c.created_at.slice(5, 16).replace("T", " ") : "") + " · " + c.message_count + " 条";
+    meta.appendChild(time);
     if (c.summarized) {
       const tag = document.createElement("span");
       tag.className = "conv-tag";
       tag.textContent = "已摘要";
-      text.appendChild(tag);
+      meta.appendChild(tag);
     }
-    const meta = document.createElement("div");
-    meta.className = "conv-meta";
-    meta.textContent = c.message_count + " 条 · " + (c.created_at ? c.created_at.slice(5, 16).replace("T", " ") : "");
-    item.append(text, meta);
+    item.append(top, meta);
     item.addEventListener("click", () => openConversation(c.conversation_id));
     convListEl.appendChild(item);
   });
@@ -696,12 +825,15 @@ async function openConversation(id) {
     pendingNewConversation = false;
     selectedOrderId = null;
     messagesEl.innerHTML = "";
+    clearEmpty();
     (data.messages || []).forEach((m) => {
       if (m.role === "user") addUserBubble(m.content);
       else if (m.role === "assistant" && m.content) addAssistantBubble(m.content);
     });
+    if (!(data.messages || []).some((m) => m.content)) renderEmpty();
     if (data.summarized) addSystemBubble("这段早期对话已被压缩成梗概(原文仍在上方)");
     loadConversations();
+    closeDrawers();
     inputEl.focus();
   } catch (err) {
     showError("会话历史加载失败:" + err);
@@ -744,6 +876,7 @@ async function consumeSSE(resp, turn) {
 // orderId 只在「点选订单卡片」这条路上传:普通发消息一律不带,免得一直粘着上一单
 async function sendMessage(text, orderId) {
   if (!text) return;
+  clearEmpty();
   lastUserMessage = text;
   if (orderId) selectedOrderId = orderId;
   addUserBubble(text);
@@ -777,7 +910,16 @@ async function sendMessage(text, orderId) {
   }
 }
 
-sourceClose.addEventListener("click", () => sourcePanel.classList.remove("open"));
+sourceClose.addEventListener("click", closeDrawers);
+convToggleBtn.addEventListener("click", () => {
+  if (convDrawer.classList.contains("open")) closeDrawers();
+  else openDrawer(convDrawer);
+});
+convCloseBtn.addEventListener("click", closeDrawers);
+scrim.addEventListener("click", closeDrawers);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeDrawers();
+});
 sendBtn.addEventListener("click", send);
 inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.isComposing) send();
@@ -787,8 +929,11 @@ newChatBtn.addEventListener("click", () => {
   conversationId = null;
   selectedOrderId = null;
   messagesEl.innerHTML = "";
+  renderEmpty();
   loadConversations();
+  inputEl.focus();
 });
 
-// CH07:进页面先拉会话列表;失败静默,聊天照常可用
+// CH07:进页面先拉会话列表(进抽屉);失败静默,聊天照常可用
 loadConversations();
+renderEmpty();
