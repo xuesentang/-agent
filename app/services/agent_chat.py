@@ -32,6 +32,7 @@ from app.core.token_budget import ContextBudget, budget_from_settings
 from app.core.tools.business_tools import build_default_registry
 from app.core.tools.context import CitationBucket, current_citations, current_conversation_id
 from app.models.message import Message
+from app.observability import tracing
 from app.repositories import (
     conversation_repo,
     conversation_summary_repo,
@@ -350,30 +351,52 @@ async def chat_with_agent(
                     "order_id": order_id or "",
                 }
             )
-            try:
-                async for chunk in app_graph.astream(
-                    graph_input,
-                    {"configurable": {"thread_id": str(conv.id)}},
-                    stream_mode="custom",
-                    version="v2",
-                ):
-                    unpacked = _unpack(chunk)
-                    if unpacked is None:
-                        continue
-                    mode, data = unpacked
-                    if mode != "custom":
-                        continue
-                    frame = _custom_to_sse(data)
-                    if frame is not None:
-                        yield frame
-                snapshot = await app_graph.aget_state({"configurable": {"thread_id": str(conv.id)}})
-                final_state = dict(snapshot.values)
-                # 图停在 interrupt 上等确认:此时 next 非空,这一轮没跑完
-                pending = tuple(getattr(snapshot, "next", ()) or ())
-            except Exception as exc:
-                logger.exception("agent graph failed")
-                yield _sse("error", {"code": "UPSTREAM_ERROR", "message": _sanitize(str(exc))})
-                return
+            # CH09: 一轮对话 = 一条 trace。上下文包住 async for——astream 是
+            # 异步生成器,图在迭代时才跑;关闭时 yield None,链路零感知。
+            with tracing.open_chat_trace(
+                conversation_id=conv.id, session_id=session_id
+            ) as chat_span:
+                run_config = {
+                    "configurable": {"thread_id": str(conv.id)},
+                    "callbacks": tracing.get_langfuse_callbacks(),
+                    "metadata": tracing.build_trace_metadata(
+                        conversation_id=conv.id, session_id=session_id
+                    ),
+                }
+                try:
+                    async for chunk in app_graph.astream(
+                        graph_input,
+                        run_config,
+                        stream_mode="custom",
+                        version="v2",
+                    ):
+                        unpacked = _unpack(chunk)
+                        if unpacked is None:
+                            continue
+                        mode, data = unpacked
+                        if mode != "custom":
+                            continue
+                        if data.get("kind") == "intent":
+                            # 意图/路由是图跑出来的,到了就补写进 trace 元数据
+                            tracing.record_intent_route(
+                                chat_span,
+                                intent=data.get("intent"),
+                                route=data.get("route"),
+                                confidence=data.get("confidence"),
+                            )
+                        frame = _custom_to_sse(data)
+                        if frame is not None:
+                            yield frame
+                    snapshot = await app_graph.aget_state({"configurable": {"thread_id": str(conv.id)}})
+                    final_state = dict(snapshot.values)
+                    # 图停在 interrupt 上等确认:此时 next 非空,这一轮没跑完
+                    pending = tuple(getattr(snapshot, "next", ()) or ())
+                    if final_state.get("finish_reason") == "abstain":
+                        tracing.mark_abstain(chat_span)
+                except Exception as exc:
+                    logger.exception("agent graph failed")
+                    yield _sse("error", {"code": "UPSTREAM_ERROR", "message": _sanitize(str(exc))})
+                    return
 
             err = await _persist_turn(session, conv.id, message, final_state)
             if err:

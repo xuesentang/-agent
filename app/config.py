@@ -99,6 +99,13 @@ class Settings(BaseSettings):
     eval_pipeline_interval_hours: int = 24
     # 用哪份用例跑:ch04 那份是唯一有分桶与权重的完整检索集
     eval_cases_path: str = "tests/eval/ch04_cases.jsonl"
+    # CH09: Langfuse 可观测性。默认全关——没配好时聊天链路零感知
+    # (key 缺失 / host 不通都静默降级,见 app/observability/tracing.py)。
+    # host 默认官方 Cloud;自托管六件套见 docker-compose.langfuse.yml。
+    langfuse_enabled: bool = False
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
 
 
 @lru_cache

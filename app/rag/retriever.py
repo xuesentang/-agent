@@ -25,6 +25,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
+from app.config import get_settings
 from app.rag.vectorstore import MilvusStore
 
 logger = logging.getLogger(__name__)
@@ -189,3 +190,29 @@ def warmup() -> None:
     retriever.embedder.embed_texts(["预热"])
     if retriever.reranker is not None:
         retriever.reranker.rerank("预热", ["预热文本"])
+
+
+def _traced(fn):
+    """启用 Langfuse 时给检索包一层 retriever span,否则原样返回。
+
+    SDK 的 LangChain 集成只覆盖 LangChain 世界(图节点 / LLM / 工具),
+    检索是项目自己的代码,不埋点 trace 里就没有这一环——而检索恰恰是
+    客服答不上问题时最该看的那一环。没装 SDK / 没配 key 时零开销。
+    """
+    settings = get_settings()
+    if not (
+        settings.langfuse_enabled
+        and settings.langfuse_public_key
+        and settings.langfuse_secret_key
+    ):
+        return fn
+    try:
+        from langfuse import observe
+
+        return observe(fn, name="rag.retrieve", as_type="retriever")
+    except Exception:
+        logger.warning("Langfuse observe 包装失败,检索不上报 span", exc_info=True)
+        return fn
+
+
+retrieve = _traced(retrieve)

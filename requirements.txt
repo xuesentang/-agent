@@ -9,6 +9,7 @@ aiosqlite==0.22.1
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.12.0
+backoff==2.2.1
 bcrypt==5.0.0
 beautifulsoup4==4.14.3
 certifi==2025.10.5
@@ -45,6 +46,7 @@ langchain-openai==1.1.10
 langchain-protocol==0.0.19
 langchain==1.2.10
 langchain-mcp-adapters==0.3.2
+langfuse==5.0.4
 langgraph-checkpoint==4.0.1
 langgraph-prebuilt==1.0.8
 langgraph-sdk==0.3.9
@@ -60,7 +62,14 @@ numpy==2.3.3
 openai==2.24.0
 onnx==1.23.2
 openpyxl==3.1.5
-opentelemetry-api==1.39.1
+opentelemetry-api==1.45.1
+opentelemetry-exporter-http-transport==0.66b1
+opentelemetry-exporter-otlp-common==0.66b1
+opentelemetry-exporter-otlp-proto-common==1.45.1
+opentelemetry-exporter-otlp-proto-http==1.45.1
+opentelemetry-proto==1.45.1
+opentelemetry-sdk==1.45.1
+opentelemetry-semantic-conventions==0.66b1
 orjson==3.11.7
 ormsgpack==1.12.2
 packaging==25.0
@@ -112,6 +121,7 @@ uuid_utils==0.14.1
 uvicorn==0.41.0
 watchfiles==1.1.1
 websockets==16.0
+wrapt==1.17.3
 xlsxwriter==3.2.9
 xxhash==3.6.0
 zstandard==0.25.0

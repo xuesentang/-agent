@@ -64,7 +64,15 @@
 - **置信度闸升级为三信号**：`confidence = 0.60*top1 + 0.25*min(有效/3,1) + 0.15*min(分差/0.30,1)`。单值 top1 的老毛病是库内外分数重叠，分不开「沾边」和「答得上」；加上有效证据条数与 Top1-Top2 分差后，阈值由 `scripts/calibrate_gate.py` 在 ch04 评估集上扫出来（**0.45**：正例误杀 6.5%、负例拦下 78.6%），不是拍脑袋。
 - **评估趋势**：指标口径抽到 `app/eval/metrics.py`（脚本与流水线共用，算法没改），每轮写一行 `eval_runs`；定时开关 `EVAL_PIPELINE_ENABLED` 默认关——跑一轮要加载嵌入 + 重排模型。生成段（Faithfulness）默认不跑，`metrics.with_generation` 标着，趋势图上分开画。
 - **按意图成本**：`intent_usage` 每轮一行，`token_source=estimated`。真值拿不到——ReAct 循环把 `usage_metadata` 吃掉了，要采得改 CH02 核心链路，本章不动。所以文档里反复写：**能比「哪类烧钱」，不能当账单**。
-- **没做 Langfuse**：trace 树、节点耗时瀑布图这些留在需求第 1 条，本章只做不依赖它的部分（见「已知限制」）。
+- **没做 Langfuse 的部分已补齐**（CH09 收尾）：trace 树与「意图/路由进 trace 元数据」见下面「可观测性」。
+
+**可观测性**（CH09 补充，`app/observability/tracing.py`）：
+
+- **一轮对话 = 一条 trace**：根 span 叫 `chat:{conversation_id}`，同一会话按 `langfuse_session_id` 归组。LangGraph 图执行、节点进出、LLM generation（带 prompt / completion / usage / 耗时）、工具调用各自成 span 挂在根下；检索是项目自己的代码、SDK 的 LangChain 集成覆盖不到，用 `observe(as_type="retriever")` 手动包一层——而检索恰恰是答不上问题时最该看的那一环。
+- **意图/路由进 trace 元数据**：意图、路由、置信度是图跑出来才知道的，在 `intent` 事件到达时补写到根 span 的 trace 元数据。v5 SDK 没有 `update_current_trace`，trace 级属性就是根 span 上的 `langfuse.trace.metadata.*`，所以补写用 `use_span` + `propagate_attributes` 保证落点在根上。拒答轮（`finish_reason=abstain`）根 span 打 `abstain` tag，UI 里按 tag 过滤。
+- **观测是旁路，不是功能**：`LANGFUSE_ENABLED=false` / key 缺失 / SDK 导入失败 / host 不通，四种情况全部返回空 callbacks——聊天链路零感知、零报错、零延迟差异，初始化失败只记日志不抛异常。每轮结束显式 flush：SDK 默认攒 512 条或 5 秒一波，短生命周期场景不 flush 就看不到。
+- **Cloud 免费层 + 自托管备选**：默认 Langfuse Cloud（Hobby），`.env` 里 `LANGFUSE_ENABLED=true` + 一对 key；不想把 trace 发出本机时用仓库根的 `docker-compose.langfuse.yml`（web / worker / postgres / clickhouse / redis / minio 六件套，**未实际跑过**，部署前以官方仓库为准）。
+- **隐私提醒**：Cloud 免费层会把每轮 trace 的 prompt / completion 原文存到对方服务器——演示、截图、写文章前先确认用的是测试数据。
 
 
 
@@ -319,10 +327,10 @@ python scripts/tool_demo.py confirm --real-model
 
 `tool_demo.py` 默认落 CH07 那套开发库（`./data/ch07.db` + `./data/ch07_milvus.db`），需要覆盖就传 `DATABASE_URL` / `VECTOR_STORE_URI`。
 
-## 验收命令（CH09 五条标准）
+## 验收命令（CH09 六条标准）
 
-本章只做不依赖 Langfuse 的部分：需求第 1 条（trace 树）与第 2 条里的「元数据进 trace」未做，
-其余四条可跑可验。开发台一律用 SQLite + Milvus Lite，避开 `.env` 里的 MySQL：
+本章初始交付时 Langfuse 部分（需求第 1 条 trace 树、第 2 条「元数据进 trace」）未做，后在收尾时
+补齐，即下面的 ⑥；其余五条可跑可验。开发台一律用 SQLite + Milvus Lite，避开 `.env` 里的 MySQL：
 
 ```bash
 export DATABASE_URL="sqlite+aiosqlite:///./data/ch07.db"
@@ -360,6 +368,23 @@ curl -s localhost:8010/api/v1/review/trend  # 旧 → 新的指标曲线
 curl -s localhost:8010/api/v1/usage/by-intent
 # 期望: 趋势含最近一轮 r5/r10/mrr；成本接口 token_source=estimated
 # 后台页: http://127.0.0.1:8010/admin/review
+
+# ⑥ Langfuse trace（.env 里 LANGFUSE_ENABLED=true + pk-lf/sk-lf；云端演示用测试数据）
+LANGFUSE_ENABLED=true python -m uvicorn app.main:app --port 8010 --log-level warning
+# 问一句政策问题。每轮结束显式 flush，不用等 SDK 的 5 秒批量窗口
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" -d '{"session_id":"ch09-lf","message":"邮费是多少","new_conversation":true}'
+# Langfuse UI → Tracing 看到一条 chat:{conversation_id} trace：
+#   根 span 下挂 LangGraph → 各节点（classify_intent/retrieve_knowledge/confidence_gate/agent/log_trace）；
+#   generation 带 prompt/completion/usage/耗时；工具 span；rag.retrieve retriever span；
+#   根 span 元数据有 intent/route/intent_confidence，session.id 把同会话 trace 归组
+# 拒答轮打 tag（UI 里按 tag 过滤）：
+curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
+  -H "Content-Type: application/json" -d '{"session_id":"ch09-lf","message":"W60 用的碳板是第几代","new_conversation":true}'
+# 期望: 该轮根 span 带 abstain tag
+# 降级对照：LANGFUSE_ENABLED=false 起服务再问一遍——聊天正常、无报错、无延迟差异
+# 单测（不联网：内存 exporter + 假模型跑真图，断言 span 树/元数据/tag/四种降级）：
+python -m pytest tests/test_langfuse_tracing.py -q     # 16 项
 ```
 
 ## 验收命令（CH10 三条标准）
@@ -441,7 +466,7 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 567 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 583 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
@@ -541,10 +566,14 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `EVAL_PIPELINE_ENABLED` | `false` | CH09：评估定时任务开关。跑一轮要加载嵌入 + 重排模型，开发台默认关 |
 | `EVAL_PIPELINE_INTERVAL_HOURS` | `24` | 评估定时间隔 |
 | `EVAL_CASES_PATH` | `tests/eval/ch04_cases.jsonl` | 评估用哪份用例（唯一带分桶与权重的完整检索集） |
+| `LANGFUSE_ENABLED` | `false` | CH09：trace 上报总开关。false 时聊天链路完全不感知（空 callbacks，零延迟差异） |
+| `LANGFUSE_PUBLIC_KEY` | 空 | Langfuse 项目的 pk-lf（Cloud 项目设置里拿；自托管是 `docker-compose.langfuse.yml` 起完后注册创建） |
+| `LANGFUSE_SECRET_KEY` | 空 | 对应的 sk-lf。两个 key 缺任何一个都按没配处理 |
+| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | 自托管时改 `http://localhost:3000`。不可达（health 检查 3 秒超时）时自动关闭上报，不报错 |
 
 ## 已知限制
 
-0. **CH09 没做 Langfuse 接入**：需求第 1 条（trace 树）与第 2 条里的「意图进 trace 元数据」依赖 Langfuse，本章只在本地落了 `intent_usage` / `eval_runs` / `review_queue`。所以「看一次请求各节点耗时」这件事仍然没有；要看就用 `LOG_LEVEL=DEBUG` 的 `node enter/exit` 日志。飞轮的其余闭环（入池 → 查重 → 待审 → 审核 → 回写 → 趋势）全部可跑，见「验收命令（CH09）」。
+0. **Langfuse 接入的边界**：trace 树与元数据已补上（见「可观测性」），但 Cloud 免费层的 trace 会存 prompt/completion 原文，演示前用测试数据；自托管 compose 未实际跑过（本机 Docker daemon 没起），只作文档备选。SDK 是 v5（OTel 底座）：没有 `update_current_trace`，trace 级属性靠根 span + `propagate_attributes` 落；检索 span 靠 `observe` 手动包，包在 `app/rag/retriever.py` 的 `retrieve` 上，换检索入口要记得搬这层。usage 数字以 LangChain 回调透传的为准，`intent_usage` 的估算口径不变（ReAct 吃掉 `usage_metadata`），两者只作交叉验证。
 1. ~~只做单轮工具调用~~ CH05 起主力 Agent 是多步 ReAct（上限由 `AGENT_MAX_STEPS` 控）。CH07 起会话内上下文有正经管理（三层 + 后台摘要 + 预算倒推），但仍**不做跨会话记忆与用户画像**——每通会话独立，`user_key` 只是个会话归属键。
 2. CH04 起默认走 **hybrid_rerank**；dense 与 BM25 的分数不同量纲、RRF 分只反映名次，跨策略只能比 Recall/MRR，不能比分值。LIKE 降级路仍保留为向量库故障时的兜底。
 3. 向量库存 Milvus Lite 文件库（单机嵌入式，无 Docker 依赖）：索引定死 FLAT 暴力精确检索——一是演示量级（几百块）暴力扫更准，二是 milvus-lite 的 AUTOINDEX 走 faiss，其 Windows 窄字符文件 API 写不了中文路径，跨进程重开必崩（实踩，见 dev-notes/ch03.md）；集合存主键+向量+text(供 BM25 建索引)+category(供过滤)，原文正文一律回 MySQL 取。
