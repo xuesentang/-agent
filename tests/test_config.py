@@ -27,3 +27,13 @@ def test_settings_reads_env(monkeypatch):
     assert settings.llm_model == "deepseek-chat"
     assert settings.history_token_budget == 4096
     assert settings.llm_temperature == 0.2
+
+
+def test_langfuse_host_accepts_base_url_alias(monkeypatch):
+    """美区账号按 SDK 文档把 host 写成 LANGFUSE_BASE_URL,两个名字都得认。"""
+    monkeypatch.setenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+    assert Settings(_env_file=None).langfuse_host == "https://cloud.langfuse.com"
+
+    monkeypatch.delenv("LANGFUSE_HOST")
+    monkeypatch.setenv("LANGFUSE_BASE_URL", "https://us.cloud.langfuse.com")
+    assert Settings(_env_file=None).langfuse_host == "https://us.cloud.langfuse.com"

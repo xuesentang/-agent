@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -102,10 +103,16 @@ class Settings(BaseSettings):
     # CH09: Langfuse 可观测性。默认全关——没配好时聊天链路零感知
     # (key 缺失 / host 不通都静默降级,见 app/observability/tracing.py)。
     # host 默认官方 Cloud;自托管六件套见 docker-compose.langfuse.yml。
+    # 账号在美区的(us.cloud.langfuse.com)常按 SDK 文档写成
+    # LANGFUSE_BASE_URL——两个名字都认:只认一个的话,另一个会被
+    # 静默忽略, trace 全发去错的大区,key 还会鉴权失败。
     langfuse_enabled: bool = False
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
-    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_host: str = Field(
+        default="https://cloud.langfuse.com",
+        validation_alias=AliasChoices("LANGFUSE_HOST", "LANGFUSE_BASE_URL"),
+    )
 
 
 @lru_cache

@@ -370,6 +370,12 @@ curl -s localhost:8010/api/v1/usage/by-intent
 # 后台页: http://127.0.0.1:8010/admin/review
 
 # ⑥ Langfuse trace（.env 里 LANGFUSE_ENABLED=true + pk-lf/sk-lf；云端演示用测试数据）
+# 注意：host 写 LANGFUSE_HOST 或 LANGFUSE_BASE_URL 都认（美区账号是
+# https://us.cloud.langfuse.com）；实测（2026-10-23，美区 Cloud）五轮对话 →
+# 云端 5 条 trace / 67 个 observation：根 span → LangGraph → 各节点，
+# 知识轮带 RETRIEVER rag.retrieve，generation 带 usage（19 个共 18891 tokens），
+# 根 span 元数据含 intent/route，拒答轮根 span 带 abstain tag，
+# session.id 归组；禁用模式再问一遍云端 observation 数不变。
 LANGFUSE_ENABLED=true python -m uvicorn app.main:app --port 8010 --log-level warning
 # 问一句政策问题。每轮结束显式 flush，不用等 SDK 的 5 秒批量窗口
 curl -sN --noproxy '*' -X POST http://127.0.0.1:8010/api/v1/chat/stream \
@@ -466,7 +472,7 @@ MySQL 真库复跑（若在 SQLite/隔离库上做过验证）：`python scripts
 ## 测试与评测
 
 ```bash
-python -m pytest                            # 583 项单测（SQLite 内存库覆盖数据层）
+python -m pytest                            # 584 项单测（SQLite 内存库覆盖数据层）
 python -m tests.eval.run_eval.py            # CH01 抽取 eval，13 条（需真实 key）
 python -m tests.eval.run_tool_eval.py       # CH02 工具选择 eval，13 条（需真实 key）
 python -m tests.eval.run_recall_eval.py     # CH03 换说法召回 eval，14 条（需真模型+真库）
@@ -569,7 +575,7 @@ CH04 四策略 × 分桶（**357 块库 / 31 道干净题**，真 BGE-M3 + 真�
 | `LANGFUSE_ENABLED` | `false` | CH09：trace 上报总开关。false 时聊天链路完全不感知（空 callbacks，零延迟差异） |
 | `LANGFUSE_PUBLIC_KEY` | 空 | Langfuse 项目的 pk-lf（Cloud 项目设置里拿；自托管是 `docker-compose.langfuse.yml` 起完后注册创建） |
 | `LANGFUSE_SECRET_KEY` | 空 | 对应的 sk-lf。两个 key 缺任何一个都按没配处理 |
-| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | 自托管时改 `http://localhost:3000`。不可达（health 检查 3 秒超时）时自动关闭上报，不报错 |
+| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | 自托管时改 `http://localhost:3000`；美区账号是 `https://us.cloud.langfuse.com`（也认 `LANGFUSE_BASE_URL` 这个 SDK 文档里的名字，两个写哪个都行）。不可达（health 检查 3 秒超时）时自动关闭上报，不报错 |
 
 ## 已知限制
 
